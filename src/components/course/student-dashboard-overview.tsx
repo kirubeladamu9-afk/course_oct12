@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Box, Button, Card, CardContent, Chip, LinearProgress, Paper, Stack, Typography } from '@mui/material'
+import { Box, Button, Chip, LinearProgress, Paper, Stack, Typography } from '@mui/material'
 import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined'
