@@ -15,6 +15,7 @@ if (!databaseUrl) {
 const sql = postgres(databaseUrl, { max: 10, ssl: 'require', prepare: false })
 const scrypt = promisify(scryptCallback)
 const app = express()
+app.set('trust proxy', 1)
 const port = Number(process.env.PORT ?? 3001)
 const distDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist')
 const isTestChapa = process.env.CHAPA_MODE !== 'live'

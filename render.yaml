@@ -11,10 +11,6 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: CHAPA_MODE
-        sync: false
-      - key: CHAPA_SECRET_KEY
-        sync: false
+        value: test
       - key: CHAPA_CURRENCY
         value: ETB
-      - key: APP_URL
-        sync: false
