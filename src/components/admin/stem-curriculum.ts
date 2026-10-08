@@ -78,6 +78,11 @@ export const getCurriculumTopicKey = (subject: string, title: string) => {
   return index < 0 ? undefined : `${subject.toLowerCase()}-${index + 1}-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
 }
 
+export const getMathTopicForLesson = (moduleTitle: string, curriculumTopic: string | undefined, title: string) => {
+  const topicTitle = STEM_CURRICULUM.Mathematics.find((topic) => getCurriculumTopicKey('Mathematics', topic) === curriculumTopic)
+  return getMathTopic(topicTitle ?? (moduleTitle === 'Mathematics' ? title : ''))
+}
+
 export const engineForTopic = (subject: string, topic: string): PlatformEngineId => {
   const value = topic.toLowerCase()
   if (subject === 'Mathematics') {

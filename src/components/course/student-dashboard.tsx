@@ -62,7 +62,7 @@ import GamificationWidgets from './gamification-widgets'
 import InteractiveDiagramViewer from './interactive-diagram-viewer'
 import SimulationLesson from './simulation-lesson'
 import { type SimulationConfig } from '@/components/admin/admin-data'
-import { getCurriculumTopicKey, getMathTopic, STEM_CURRICULUM, type MathTopic } from '@/components/admin/stem-curriculum'
+import { getCurriculumTopicKey, getMathTopic, getMathTopicForLesson, STEM_CURRICULUM, type MathTopic } from '@/components/admin/stem-curriculum'
 import { getPlatformEngine, type PlatformEngineId } from '@/components/stem-lab/platform-engine-library'
 import { PlatformEnginePreview } from '@/components/stem-lab/platform-engine-previews'
 import { Logo } from '@/components/logo'
@@ -271,7 +271,7 @@ const mapEnrollmentCourse = (enrollment: MyEnrollment): DashboardCourse => ({
       title: lesson.title,
       type: lesson.type,
       duration: lesson.duration ? formatDuration(lesson.duration) : lesson.type === 'article' ? 'Article' : lesson.type === 'interactive' ? 'Interactive' : lesson.type === 'simulation' ? 'Simulation' : lesson.type === 'quiz' ? 'Quiz' : lesson.type === 'practice' ? 'Practice' : 'Video',
-      description: lesson.articleBody || (module.title === 'Biology' && lesson.title === 'Photosynthesis' ? 'See how plants make their own food using sunlight.' : module.title === 'Biology' && lesson.title === 'Cells' ? 'Discover that living things are made of tiny building blocks called cells.' : module.title === 'Chemistry' && lesson.title === 'Chemical Formulae' ? 'Assemble the correct chemical formula from elements.' : module.title === 'Chemistry' && lesson.title === 'Materials Around Us' ? 'Explore the everyday materials that make up our world.' : module.title === 'Chemistry' && lesson.title === 'Solids/Liquids/Gases' ? 'Explore the three states of matter.' : module.title === 'Chemistry' && (lesson.title === 'Properties of Materials' || lesson.title === 'Mixing Materials') ? "Compare materials by their physical properties, and explore what happens when they're mixed." : module.title === 'Mathematics' ? getMathTopic(lesson.title)?.description : undefined) || 'Work through this lesson at your own pace.',
+      description: lesson.articleBody || (module.title === 'Biology' && lesson.title === 'Photosynthesis' ? 'See how plants make their own food using sunlight.' : module.title === 'Biology' && lesson.title === 'Cells' ? 'Discover that living things are made of tiny building blocks called cells.' : module.title === 'Chemistry' && lesson.title === 'Chemical Formulae' ? 'Assemble the correct chemical formula from elements.' : module.title === 'Chemistry' && lesson.title === 'Materials Around Us' ? 'Explore the everyday materials that make up our world.' : module.title === 'Chemistry' && lesson.title === 'Solids/Liquids/Gases' ? 'Explore the three states of matter.' : module.title === 'Chemistry' && (lesson.title === 'Properties of Materials' || lesson.title === 'Mixing Materials') ? "Compare materials by their physical properties, and explore what happens when they're mixed." : getMathTopicForLesson(module.title, lesson.curriculumTopic, lesson.title)?.description) || 'Work through this lesson at your own pace.',
       videoUrl: lesson.videoUrl,
       thumbnailUrl: lesson.thumbnailUrl,
       baseImageUrl: lesson.baseImageUrl,
@@ -280,7 +280,7 @@ const mapEnrollmentCourse = (enrollment: MyEnrollment): DashboardCourse => ({
       platformEngineId: lesson.platformEngineId,
       curriculumTopic: lesson.curriculumTopic,
       topicTitle: module.title === 'Physics' ? getPhysicsActivityTopic(lesson.curriculumTopic, lesson.title) : lesson.title,
-      mathTopic: module.title === 'Mathematics' ? getMathTopic(lesson.title) : undefined,
+      mathTopic: getMathTopicForLesson(module.title, lesson.curriculumTopic, lesson.title),
       resources: lesson.resources ?? [],
       quizQuestions: lesson.quizQuestions,
       practiceQuestions: lesson.practiceQuestions,
