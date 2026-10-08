@@ -72,6 +72,7 @@ import AdminDataTable, { type DataColumn } from '@/components/admin/admin-data-t
 import { toast } from '@/components/toast'
 import { beginQuizAttempt, completeLesson as completeLessonApi, getAuthenticatedUser, getBookstorePurchases, getCourses, getGamification, getMyEnrollments, getMyPayments, getPracticeExam, getPracticePurchases, getPublicClasses, logLiveSessionJoin, recordPracticeLessonAnswer, saveAuthenticatedUser, saveLessonEngagement, saveQuizAnswer, saveQuizViolation, submitQuizAttempt, signOut, updateAuthenticatedProfile, type BookstorePurchase, type GamificationData, type MyEnrollment, type MyPayment, type PublicClass, type QuizAnswerRecord, type QuizAnswerStatus, type QuizAttempt, type QuizQuestionResult, type QuizViolation, type QuizViolationType, type WeakArea } from '@/services/api'
 import { navigateTo } from '@/lib/navigation'
+import { SITE_NAME } from '@/lib/site'
 import { calculateOverallGrade } from '@/lib/overall-grade'
 
  type DashboardView = 'overview' | 'calendar' | 'courses' | 'classes' | 'quizzes' | 'purchases' | 'other-courses' | 'other-classes' | 'profile' | 'payments' | 'course-view'
@@ -1294,7 +1295,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
 
   useEffect(() => {
     const title = quizActive ? (readOnlyQuizResult ? 'Quiz Results' : 'Quiz') : pageTitle
-    document.title = `${title} - Courseshap`
+    document.title = `${SITE_NAME} | ${title}`
   }, [pageTitle, quizActive, readOnlyQuizResult])
 
   const selectView = (view: DashboardView) => {

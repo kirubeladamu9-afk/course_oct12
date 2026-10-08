@@ -14,6 +14,7 @@ import PracticeExamPlayer from '@/components/practice/practice-exam-player'
 import InfoPage from '@/components/info/info-page'
 import { BookstorePage } from '@/components/bookstore/bookstore-page'
 import { navigateTo } from '@/lib/navigation'
+import { SITE_NAME } from '@/lib/site'
 import { type Course } from '@/interfaces/course'
 import { getAuthenticatedUser, getCourses } from '@/services/api'
 
@@ -122,7 +123,7 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
                         : courseMatch
                           ? 'Course'
                           : 'Home'
-    document.title = `${pageName} - Courseshap`
+    document.title = `${SITE_NAME} | ${pageName}`
   }, [authMode, currentPath, isAboutPath, isAdminPath, isBookstorePath, isContactPath, isDashboardPath, isPracticeCatalogPath, isTutorPath, practiceExamMatch, courseMatch])
 
   useEffect(() => {

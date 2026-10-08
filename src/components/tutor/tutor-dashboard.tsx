@@ -28,6 +28,7 @@ import { getAuthenticatedUser, getClassLeaderboard, getTutorAtRiskStudents, getT
 import AtRiskStudentsPanel from '@/components/at-risk-students-panel'
 import { type AdminCourse, type AdminModule } from '@/components/admin/admin-data'
 import { navigateTo } from '@/lib/navigation'
+import { SITE_NAME } from '@/lib/site'
 import { calculateOverallGrade } from '@/lib/overall-grade'
 import { toast } from '@/components/toast'
 import Footer from '@/components/footer/footer'
@@ -266,7 +267,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
   const pageTitle = courseDraft ? 'Edit Course Curriculum' : classDraft ? 'Edit Class Curriculum' : progressTarget ? 'Student Progress' : view === 'overview' ? 'Overview' : view === 'schedule' ? 'Schedule' : view === 'courses' ? 'My Courses' : view === 'classes' ? 'My Classes' : view === 'students' ? 'Students & Attendance' : 'Profile'
 
   useEffect(() => {
-    document.title = `${pageTitle} - Courseshap`
+    document.title = `${SITE_NAME} | ${pageTitle}`
   }, [pageTitle])
 
   const saveProfile = async (event: React.FormEvent) => {
