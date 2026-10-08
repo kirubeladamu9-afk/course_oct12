@@ -7,7 +7,7 @@ import FooterNavigation from './footer-navigation'
 import FooterSocialLinks from './footer-social-links'
 import type { FC } from 'react'
 
-const Footer: FC<{ showCopyright?: boolean }> = ({ showCopyright = true }) => {
+const Footer: FC = () => {
   return (
     <Box component="footer" sx={{ backgroundColor: 'background.paper', color: 'text.primary', borderTop: 1, borderColor: 'divider' }}>
       <Container sx={{ py: { xs: 5, md: 7 } }}>
@@ -29,7 +29,7 @@ const Footer: FC<{ showCopyright?: boolean }> = ({ showCopyright = true }) => {
       <Box sx={{ borderTop: 1, borderColor: 'divider' }}>
         <Container sx={{ py: 2.5 }}>
           <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between', gap: 2 }}>
-            {showCopyright && <Typography color="text.secondary" variant="caption">© {new Date().getFullYear()} EKD Tech Solutions. All rights reserved.</Typography>}
+            <Typography color="text.secondary" variant="caption">© {new Date().getFullYear()} EKD Tech Solutions. All rights reserved.</Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1.5, sm: 2.5 } }}>
               <MuiLink href="/about-us" underline="hover" color="text.secondary" variant="caption">Privacy Policy</MuiLink>
               <MuiLink href="/about-us" underline="hover" color="text.secondary" variant="caption">Terms of Use</MuiLink>
