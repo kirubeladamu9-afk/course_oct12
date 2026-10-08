@@ -16,6 +16,7 @@ interface AtRiskStudentsPanelProps {
   students: AtRiskStudent[]
   loading: boolean
   error: string | null
+  compact?: boolean
 }
 
 const getInitials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
@@ -34,11 +35,11 @@ const getLatestRisks = (students: AtRiskStudent[]) => [...students]
   })
   .slice(0, 5)
 
-const AtRiskStudentsPanel = ({ students, loading, error }: AtRiskStudentsPanelProps) => {
+const AtRiskStudentsPanel = ({ students, loading, error, compact = false }: AtRiskStudentsPanelProps) => {
   const latestStudents = getLatestRisks(students)
 
   return (
-  <Paper elevation={0} sx={{ p: { xs: 1.5, md: 2 }, mb: 1.5, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', boxShadow: '0 4px 20px rgba(15, 23, 42, 0.045)' }}>
+  <Paper elevation={0} sx={{ p: { xs: 1.5, md: 2 }, mb: 1.5, width: compact ? '100%' : undefined, minWidth: compact ? 0 : undefined, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', boxShadow: '0 4px 20px rgba(15, 23, 42, 0.045)' }}>
     <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 1.5 }}>
       <Box sx={{ display: 'grid', placeItems: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: 2, color: 'warning.dark', backgroundColor: (theme) => alpha(theme.palette.warning.main, 0.12) }}>
         <WarningAmberOutlinedIcon fontSize="small" />
@@ -73,7 +74,7 @@ const AtRiskStudentsPanel = ({ students, loading, error }: AtRiskStudentsPanelPr
               key={student.id}
               sx={{
                 display: 'grid',
-                gridTemplateColumns: { xs: 'minmax(0, 1fr) auto', md: 'minmax(180px, 1.2fr) minmax(120px, 0.9fr) minmax(220px, 1.7fr) minmax(130px, 0.8fr) auto' },
+                gridTemplateColumns: compact ? 'minmax(0, 1fr) auto' : { xs: 'minmax(0, 1fr) auto', md: 'minmax(180px, 1.2fr) minmax(120px, 0.9fr) minmax(220px, 1.7fr) minmax(130px, 0.8fr) auto' },
                 alignItems: 'center',
                 columnGap: { xs: 1, md: 1.5 },
                 rowGap: { xs: 0.75, md: 0 },
@@ -95,12 +96,12 @@ const AtRiskStudentsPanel = ({ students, loading, error }: AtRiskStudentsPanelPr
 
               <Chip size="small" color={priority.color} variant="outlined" label={priority.label} sx={{ justifySelf: { xs: 'end', md: 'start' }, height: 23, fontSize: 11, fontWeight: 700, backgroundColor: (theme) => alpha(theme.palette[priority.color].main, 0.07) }} />
 
-              <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0, gridColumn: { xs: '1 / -1', md: 'auto' }, color: 'text.secondary' }}>
+              <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0, gridColumn: compact ? '1 / -1' : { xs: '1 / -1', md: 'auto' }, color: 'text.secondary' }}>
                 <SchoolOutlinedIcon sx={{ fontSize: 16, flexShrink: 0 }} />
                 <Typography variant="caption" noWrap>{course}</Typography>
               </Stack>
 
-              <Box sx={{ gridColumn: { xs: '1 / -1', md: 'auto' }, minWidth: 0 }}>
+              <Box sx={{ gridColumn: compact ? '1 / -1' : { xs: '1 / -1', md: 'auto' }, minWidth: 0 }}>
                 <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.4 }}>
                   <Typography variant="caption" color="text.secondary">Progress</Typography>
                   <Typography variant="caption" sx={{ fontWeight: 700 }}>{progress}%</Typography>

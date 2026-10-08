@@ -595,7 +595,7 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'revenueByMonth' | 'enrol
   )
 }
 
-const WeakAreasPanel: FC<{ weakAreas: AdminWeakArea[] }> = ({ weakAreas }) => <Paper elevation={0} sx={{ p: 2.5, mb: 2, borderRadius: 3.5, border: 1, borderColor: weakAreas.length ? 'warning.main' : 'divider', backgroundColor: 'background.paper' }}>
+const WeakAreasPanel: FC<{ weakAreas: AdminWeakArea[] }> = ({ weakAreas }) => <Paper elevation={0} sx={{ p: 2.5, mb: 2, width: '100%', minWidth: 0, boxSizing: 'border-box', borderRadius: 3.5, border: 1, borderColor: weakAreas.length ? 'warning.main' : 'divider', backgroundColor: 'background.paper' }}>
   <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 2 }}>
     <Box>
       <Typography component="h2" variant="h6">Topics needing attention</Typography>
@@ -683,13 +683,16 @@ const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
       </Stack>
     </Paper>
 
-    {isLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading dashboard data" /></Box> : loadError ? <Paper elevation={0} sx={{ p: 4, border: 1, borderColor: 'divider', borderRadius: 3.5 }}><Typography color="error" sx={{ mb: 2 }}>{loadError}</Typography><Button label="Retry" onClick={() => { setIsLoading(true); void reloadOverview() }} /></Paper> : overview && <><AtRiskStudentsPanel students={atRiskStudents} loading={atRiskLoading} error={atRiskError} /><Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.25, sm: 1.75 }, mb: 2.25 }}>
+    {isLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading dashboard data" /></Box> : loadError ? <Paper elevation={0} sx={{ p: 4, border: 1, borderColor: 'divider', borderRadius: 3.5 }}><Typography color="error" sx={{ mb: 2 }}>{loadError}</Typography><Button label="Retry" onClick={() => { setIsLoading(true); void reloadOverview() }} /></Paper> : overview && <><Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.25, sm: 1.75 }, mb: 2.25 }}>
       <StatCard label="Total revenue" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(overview.totalRevenue)} detail="Published course enrollments" icon={<PaymentsOutlinedIcon fontSize="small" />} tone="teal" />
       <StatCard label="Active students" value={new Intl.NumberFormat('en-US').format(overview.activeStudents)} detail="Across published courses" icon={<GroupOutlinedIcon fontSize="small" />} tone="blue" />
       <StatCard label="Published courses" value={new Intl.NumberFormat('en-US').format(overview.publishedCourses)} detail={`${overview.draftCourses} course${overview.draftCourses === 1 ? '' : 's'} in draft`} icon={<SchoolOutlinedIcon fontSize="small" />} tone="violet" />
       <StatCard label="Active tutors" value={new Intl.NumberFormat('en-US').format(overview.activeTutors)} detail={`${overview.inactiveTutors} inactive tutor${overview.inactiveTutors === 1 ? '' : 's'}`} icon={<PersonOutlineIcon fontSize="small" />} tone="amber" />
     </Box>
-    <WeakAreasPanel weakAreas={overview.weakAreas} />
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1.35fr) minmax(0, .9fr)' }, gap: 2.25, alignItems: 'start', minWidth: 0 }}>
+      <AtRiskStudentsPanel students={atRiskStudents} loading={atRiskLoading} error={atRiskError} compact />
+      <WeakAreasPanel weakAreas={overview.weakAreas} />
+    </Box>
     <DashboardCharts revenueByMonth={overview.revenueByMonth} enrollmentsByCategory={overview.enrollmentsByCategory} revenueByCategory={overview.revenueByCategory} topCourses={overview.topCourses} /></>}
   </>
 }
@@ -1546,7 +1549,7 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
             </Menu>
           </Stack>
         </Box>
-        <Box component="main" sx={{ p: { xs: 2, md: 3.5 }, maxWidth: 1540, minHeight: 'calc(100vh - 82px)', background: 'var(--app-content-gradient)' }}>
+        <Box component="main" sx={{ p: { xs: 2, md: 3.5 }, width: '100%', minWidth: 0, maxWidth: 1540, boxSizing: 'border-box', minHeight: 'calc(100vh - 82px)', background: 'var(--app-content-gradient)' }}>
           {isLoading ? <AdminLoadingState /> : currentPage}
         </Box>
       </Box>
