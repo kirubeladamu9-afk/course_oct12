@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
 import postgres from 'postgres'
+import { remapReusedCourseLessonIds } from './course-lesson-identities.js'
 
 const databaseUrl = process.env.DATABASE_URL
 
@@ -3365,12 +3366,30 @@ app.put('/api/admin/courses/:id', requireAdminOrTutor, async (request, response)
 
   try {
     const courseWithTutor = { ...course, tutor_id: await findTutorIdByName(course.tutor) }
-    const [updated] = await sql`
-      UPDATE courses
-      SET ${sql(courseWithTutor)}, updated_at = NOW()
-      WHERE id = ${id}
-      RETURNING id
-    `
+    const updated = await sql.begin(async (transaction) => {
+      const [current] = await transaction`SELECT modules FROM courses WHERE id = ${id} FOR UPDATE`
+      if (!current) return null
+      const previousModules = deserializeJson(current.modules)
+      const nextModules = deserializeJson(courseWithTutor.modules)
+      const previousIds = new Set(getCourseLessons(previousModules).map((lesson) => String(lesson.id)))
+      const addedIds = [...new Set(getCourseLessons(nextModules).filter((lesson) => !previousIds.has(String(lesson.id))).map((lesson) => String(lesson.id)))]
+      const staleProgress = addedIds.length ? await transaction`
+        SELECT DISTINCT progress.lesson_id::TEXT AS "lessonId"
+        FROM student_lesson_progress progress
+        INNER JOIN enrollments ON enrollments.id = progress.enrollment_id
+        WHERE enrollments.course_id = ${id}
+          AND enrollments.class_id IS NULL
+          AND progress.lesson_id::TEXT = ANY(${addedIds})
+      ` : []
+      const modules = remapReusedCourseLessonIds(previousModules, nextModules, staleProgress.map(({ lessonId }) => lessonId))
+      const [saved] = await transaction`
+        UPDATE courses
+        SET ${transaction({ ...courseWithTutor, modules: JSON.stringify(modules) })}, updated_at = NOW()
+        WHERE id = ${id}
+        RETURNING id
+      `
+      return saved ?? null
+    })
     if (!updated) return response.status(404).json({ message: 'Course not found.' })
     return response.json(await readCourse(id))
   } catch (error) {
