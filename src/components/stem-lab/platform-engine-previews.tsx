@@ -83,6 +83,7 @@ import ChemicalBondingActivity from './chemical-bonding-activity'
 import MaterialsPropertiesActivity from './materials-properties-activity'
 import FormulaBuilderActivity from './formula-builder-activity'
 import PhotosynthesisLabActivity from './photosynthesis-lab-activity'
+import CellZoomActivity from './cell-zoom-activity'
 import { type MathTopic } from '@/components/admin/stem-curriculum'
 
 export type EnginePreviewProps = { onComplete?: () => void }
@@ -825,6 +826,7 @@ export const PlatformEnginePreview: FC<{ engineId: PlatformEngineId; onComplete?
   if (mathTopic) return <MathActivityEngine topic={mathTopic} onComplete={onComplete} />
   if (engineId === 'formula-builder' || topicTitle === 'Chemical Formulae') return <FormulaBuilderActivity onComplete={onComplete} />
   if (engineId === 'photosynthesis-lab' || topicTitle === 'Photosynthesis') return <PhotosynthesisLabActivity onComplete={onComplete} />
+  if (engineId === 'cell-zoom' || topicTitle === 'Cells') return <CellZoomActivity onComplete={onComplete} />
   if (engineId === 'material-sorter' || topicTitle === 'Materials Around Us') return <MaterialSorterActivity onComplete={onComplete} />
   if (engineId === 'state-sorter' || topicTitle === 'Solids/Liquids/Gases') return <StateSorterActivity onComplete={onComplete} />
   if (engineId === 'particle-state-simulator' || topicTitle === 'States of Matter' || topicTitle === 'Heat & Cold') return <ParticleStateSimulator onComplete={onComplete} subjectLabel={topicTitle === 'Heat & Cold' ? 'Physics' : 'Chemistry'} />
