@@ -24,6 +24,7 @@ type SubjectFilter = typeof subjects[number]
 const stages = ['All', 'Foundation', 'Core', 'Advanced', 'Applied lab'] as const
 type StageFilter = typeof stages[number]
 const comingSoonChemistryTopics = new Set(['Salts', 'Laboratory Techniques & Safety', 'Mole Concept', 'Stoichiometry', 'Oxidation & Reduction', 'Organic Chemistry', 'Chemical Kinetics', 'Chemical Equilibrium', 'Solubility Equilibrium', 'Thermochemistry', 'Electrochemistry', 'Redox Chemistry', 'Hydrocarbons', 'Alcohols & Ethers', 'Aldehydes & Ketones', 'Carboxylic Acids', 'Polymers', 'Biochemistry', 'Environmental Chemistry'])
+const comingSoonBiologyTopics = new Set(['Seeds & Germination', 'Animals Around Us', 'Healthy Habits', 'Habitats', 'Life Cycles', 'Human Body Systems', 'Cell Structure', 'Microscopes', 'Plant Reproduction', 'Respiration', 'Circulation', 'Biodiversity', 'Cell Biology', 'Biological Molecules', 'Enzymes', 'Cell Division', 'Genetics', 'Molecular Biology', 'Plant Physiology', 'Animal Physiology', 'Reproduction', 'Microbiology', 'Ecology', 'Evolution', 'Molecular Genetics', 'DNA & RNA', 'Biotechnology', 'Human Reproduction', 'Immunology', 'Population Biology', 'Conservation Biology'])
 
 type TopicOption = {
   key: string
@@ -58,7 +59,7 @@ const topicOptions = (): TopicOption[] => {
     subject: subject as Exclude<SubjectFilter, 'All'>,
     stage: subject === 'Mathematics' ? getMathTopic(title)?.tier ?? 'Foundation' : index < Math.ceil(titles.length / 3) ? 'Foundation' as const : index < Math.ceil((titles.length * 2) / 3) ? 'Core' as const : 'Advanced' as const,
     platformEngineId: engineForTopic(subject, title),
-    comingSoon: subject === 'Chemistry' && comingSoonChemistryTopics.has(title),
+    comingSoon: (subject === 'Chemistry' && comingSoonChemistryTopics.has(title)) || (subject === 'Biology' && comingSoonBiologyTopics.has(title)),
     activity: subject === 'Mathematics' ? getMathTopic(title) : undefined,
   })))
   const labs: Array<{ subject: Exclude<SubjectFilter, 'All'>; title: string; toolId: string }> = [
