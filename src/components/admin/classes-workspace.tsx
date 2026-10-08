@@ -34,7 +34,7 @@ import { type FC, type ReactNode, useEffect, useMemo, useRef, useState } from 'r
 import { toast } from '@/components/toast'
 import { navigateTo } from '@/lib/navigation'
 import { assignAdminClass, createAdminClass, deleteAdminClass, getClassLeaderboard, getAdminClassesWorkspace, removeAdminClassEnrollment, updateAdminClass, updateAdminClassEnrollment, type ClassLeaderboardEntry } from '@/services/api'
-import { type AdminCourse, type AdminLesson, type AdminModule, type LessonType } from './admin-data'
+import { getNextLessonId, type AdminCourse, type AdminLesson, type AdminModule, type LessonType } from './admin-data'
 import { CourseEditor } from './admin-dashboard'
 import AdminDataTable, { type DataColumn } from './admin-data-table'
 
@@ -253,7 +253,7 @@ const emptyClassForm = (): ClassFormValue => ({
 
 const ClassCurriculumEditor: FC<{ modules: AdminModule[]; onChange: (modules: AdminModule[]) => void }> = ({ modules, onChange }) => {
   const addModule = () => onChange([...modules, { id: Math.max(0, ...modules.map((module) => module.id)) + 1, title: `Module ${modules.length + 1}`, lessons: [] }])
-  const addLesson = (moduleId: number, type: LessonType) => onChange(modules.map((module) => module.id === moduleId ? { ...module, lessons: [...module.lessons, { id: Math.max(0, ...modules.flatMap((item) => item.lessons.map((lesson) => lesson.id))) + 1, title: `New ${type} lesson`, type, duration: null, resources: [] }] } : module))
+  const addLesson = (moduleId: number, type: LessonType) => onChange(modules.map((module) => module.id === moduleId ? { ...module, lessons: [...module.lessons, { id: getNextLessonId(modules), title: `New ${type} lesson`, type, duration: null, resources: [] }] } : module))
   return <Stack spacing={1.5}><Typography variant="body2" color="text.secondary">Build curriculum private to this class. It is not connected to the public Courses catalog.</Typography>{modules.map((module) => <Paper key={module.id} variant="outlined" sx={{ p: 1.5 }}><TextField fullWidth size="small" label="Module title" value={module.title} onChange={(event) => onChange(modules.map((item) => item.id === module.id ? { ...item, title: event.target.value } : item))} /><Stack spacing={0.5} sx={{ mt: 1 }}>{module.lessons.map((lesson) => <Typography key={lesson.id} variant="body2">{lesson.title} · {lesson.type}</Typography>)}<Stack direction="row" spacing={0.5} flexWrap="wrap">{(['video', 'article', 'interactive', 'quiz', 'practice', 'live'] as LessonType[]).map((type) => <Button key={type} size="small" onClick={() => addLesson(module.id, type)}>Add {type}</Button>)}</Stack></Stack></Paper>)}<Button startIcon={<AddIcon />} onClick={addModule} sx={{ alignSelf: 'flex-start' }}>Add module</Button></Stack>
 }
 

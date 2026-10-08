@@ -109,6 +109,14 @@ export interface AdminModule {
   lessons: AdminLesson[]
 }
 
+let lastGeneratedLessonId = 0
+
+export const getNextLessonId = (modules: AdminModule[]) => {
+  const currentMaximum = Math.max(0, ...modules.flatMap((module) => module.lessons.map((lesson) => lesson.id)))
+  lastGeneratedLessonId = Math.max(lastGeneratedLessonId + 1, Date.now() * 1000, currentMaximum + 1)
+  return lastGeneratedLessonId
+}
+
 export interface AssignedCourse {
   id: number
   title: string

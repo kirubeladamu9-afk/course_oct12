@@ -2,11 +2,23 @@ const getLessons = (modules) => Array.isArray(modules)
   ? modules.flatMap((module) => Array.isArray(module?.lessons) ? module.lessons : [])
   : []
 
+const getLessonIdentity = ({ title, type, curriculumTopic, platformEngineId, simulationToolId }) =>
+  JSON.stringify({ title, type, curriculumTopic, platformEngineId, simulationToolId })
+
+export const getChangedCourseLessonIds = (previousModules, nextModules) => {
+  const previousLessonsById = new Map(getLessons(previousModules).map((lesson) => [String(lesson.id), lesson]))
+  return [...new Set(getLessons(nextModules)
+    .filter((lesson) => {
+      const previousLesson = previousLessonsById.get(String(lesson.id))
+      return !previousLesson || getLessonIdentity(previousLesson) !== getLessonIdentity(lesson)
+    })
+    .map((lesson) => String(lesson.id)))]
+}
+
 export const remapReusedCourseLessonIds = (previousModules, nextModules, progressLessonIds) => {
-  const previousIds = new Set(getLessons(previousModules).map((lesson) => String(lesson.id)))
+  const changedIds = new Set(getChangedCourseLessonIds(previousModules, nextModules))
   const staleProgressIds = new Set(progressLessonIds.map(String))
-  const nextLessonIds = new Set(getLessons(nextModules).map((lesson) => String(lesson.id)))
-  const reusedIds = new Set([...nextLessonIds].filter((id) => !previousIds.has(id) && staleProgressIds.has(id)))
+  const reusedIds = new Set([...changedIds].filter((id) => staleProgressIds.has(id)))
   if (!reusedIds.size) return nextModules
 
   let nextId = Math.max(
@@ -18,7 +30,7 @@ export const remapReusedCourseLessonIds = (previousModules, nextModules, progres
   return nextModules.map((module) => ({
     ...module,
     lessons: (module.lessons ?? []).map((lesson) => {
-      if (previousIds.has(String(lesson.id)) || !reusedIds.has(String(lesson.id))) return lesson
+      if (!reusedIds.has(String(lesson.id))) return lesson
       return { ...lesson, id: nextId++ }
     }),
   }))

@@ -14,6 +14,15 @@ describe('remapReusedCourseLessonIds', () => {
     ])
   })
 
+  it('remaps a replaced lesson when it keeps an ID with stale progress', () => {
+    const previousModules = [{ id: 1, lessons: [{ id: 2, title: 'Old activity', type: 'simulation' }] }]
+    const nextModules = [{ id: 1, lessons: [{ id: 2, title: 'Magnets', type: 'simulation', platformEngineId: 'magnet-lab' }] }]
+
+    const result = remapReusedCourseLessonIds(previousModules, nextModules, [2])
+
+    expect(result[0].lessons[0]).toEqual({ id: 3, title: 'Magnets', type: 'simulation', platformEngineId: 'magnet-lab' })
+  })
+
   it('preserves existing lesson IDs and does not change lessons without stale progress', () => {
     const previousModules = [{ id: 1, lessons: [{ id: 1, title: 'Existing activity' }] }]
     const nextModules = [{ id: 1, lessons: [{ id: 1, title: 'Existing activity' }, { id: 2, title: 'New activity' }] }]

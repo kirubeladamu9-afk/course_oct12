@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
 import postgres from 'postgres'
-import { remapReusedCourseLessonIds } from './course-lesson-identities.js'
+import { getChangedCourseLessonIds, remapReusedCourseLessonIds } from './course-lesson-identities.js'
 
 const databaseUrl = process.env.DATABASE_URL
 
@@ -3371,8 +3371,7 @@ app.put('/api/admin/courses/:id', requireAdminOrTutor, async (request, response)
       if (!current) return null
       const previousModules = deserializeJson(current.modules)
       const nextModules = deserializeJson(courseWithTutor.modules)
-      const previousIds = new Set(getCourseLessons(previousModules).map((lesson) => String(lesson.id)))
-      const addedIds = [...new Set(getCourseLessons(nextModules).filter((lesson) => !previousIds.has(String(lesson.id))).map((lesson) => String(lesson.id)))]
+      const addedIds = getChangedCourseLessonIds(previousModules, nextModules)
       const staleProgress = addedIds.length ? await transaction`
         SELECT DISTINCT progress.lesson_id::TEXT AS "lessonId"
         FROM student_lesson_progress progress
