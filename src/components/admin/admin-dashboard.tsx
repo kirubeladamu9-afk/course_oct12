@@ -1509,7 +1509,7 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
         <Box component="main" sx={{ p: { xs: 2, md: 3.5 }, maxWidth: 1540, minHeight: 'calc(100vh - 82px)', background: 'var(--app-content-gradient)' }}>
           {isLoading ? <AdminLoadingState /> : currentPage}
         </Box>
-        <Footer />
+        <Footer showCopyright={false} />
       </Box>
     </Box>
   )
