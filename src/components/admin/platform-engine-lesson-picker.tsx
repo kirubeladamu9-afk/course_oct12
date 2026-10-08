@@ -23,6 +23,7 @@ const subjects = ['All', 'Mathematics', 'Physics', 'Chemistry', 'Biology'] as co
 type SubjectFilter = typeof subjects[number]
 const stages = ['All', 'Foundation', 'Core', 'Advanced', 'Applied lab'] as const
 type StageFilter = typeof stages[number]
+const comingSoonChemistryTopics = new Set(['Salts', 'Laboratory Techniques & Safety', 'Mole Concept', 'Stoichiometry', 'Oxidation & Reduction', 'Organic Chemistry', 'Chemical Kinetics', 'Chemical Equilibrium', 'Solubility Equilibrium', 'Thermochemistry', 'Electrochemistry', 'Redox Chemistry', 'Hydrocarbons', 'Alcohols & Ethers', 'Aldehydes & Ketones', 'Carboxylic Acids', 'Polymers', 'Biochemistry', 'Environmental Chemistry'])
 
 type TopicOption = {
   key: string
@@ -31,6 +32,7 @@ type TopicOption = {
   subject: Exclude<SubjectFilter, 'All'>
   stage: Exclude<StageFilter, 'All'>
   platformEngineId: PlatformEngineId
+  comingSoon?: boolean
   simulation?: StemToolDefinition
   activity?: ReturnType<typeof getMathTopic>
 }
@@ -56,6 +58,7 @@ const topicOptions = (): TopicOption[] => {
     subject: subject as Exclude<SubjectFilter, 'All'>,
     stage: subject === 'Mathematics' ? getMathTopic(title)?.tier ?? 'Foundation' : index < Math.ceil(titles.length / 3) ? 'Foundation' as const : index < Math.ceil((titles.length * 2) / 3) ? 'Core' as const : 'Advanced' as const,
     platformEngineId: engineForTopic(subject, title),
+    comingSoon: subject === 'Chemistry' && comingSoonChemistryTopics.has(title),
     activity: subject === 'Mathematics' ? getMathTopic(title) : undefined,
   })))
   const labs: Array<{ subject: Exclude<SubjectFilter, 'All'>; title: string; toolId: string }> = [
@@ -79,9 +82,9 @@ const PlatformEngineLessonPicker: FC<PlatformEngineLessonPickerProps> = ({ lesso
   const selectedKey = legacyTopicDismissed ? null : options.find((option) => option.title === lesson.title)?.key ?? lesson.curriculumTopic ?? null
   const filteredOptions = options.filter((option) => (subject === 'All' || option.subject === subject) && (stage === 'All' || option.stage === stage) && `${option.title} ${option.subject} ${option.description}`.toLowerCase().includes(search.trim().toLowerCase()))
   const selectedOption = options.find((option) => option.key === selectedKey)
-  const selectTopic = (option: TopicOption) => { setLegacyTopicDismissed(false); updateLessonDraft({ ...lesson, title: lesson.title.startsWith('New ') ? option.title : lesson.title, curriculumTopic: option.key, platformEngineId: option.platformEngineId, simulationToolId: option.simulation?.id ?? option.platformEngineId, simulation: option.simulation?.config }) }
+  const selectTopic = (option: TopicOption) => { if (option.comingSoon) return; setLegacyTopicDismissed(false); updateLessonDraft({ ...lesson, title: lesson.title.startsWith('New ') ? option.title : lesson.title, curriculumTopic: option.key, platformEngineId: option.platformEngineId, simulationToolId: option.simulation?.id ?? option.platformEngineId, simulation: option.simulation?.config }) }
   const saveSelectedTopic = () => {
-    if (!selectedOption) return
+    if (!selectedOption || selectedOption.comingSoon) return
     const normalizedLesson = { ...lesson, curriculumTopic: selectedOption.key, platformEngineId: selectedOption.platformEngineId, simulationToolId: selectedOption.simulation?.id ?? selectedOption.platformEngineId, simulation: selectedOption.simulation?.config }
     updateLessonDraft(normalizedLesson)
     onSave(normalizedLesson)
@@ -89,16 +92,16 @@ const PlatformEngineLessonPicker: FC<PlatformEngineLessonPickerProps> = ({ lesso
 
   if (selectedOption) return <Stack spacing={2}>
     <Button variant="text" startIcon={<ArrowBackIcon />} onClick={() => { setLegacyTopicDismissed(true); updateLessonDraft({ ...lesson, curriculumTopic: undefined, platformEngineId: undefined, simulationToolId: '', simulation: undefined }) }} sx={{ alignSelf: 'flex-start' }}>Back to topic library</Button>
-    <Paper elevation={0} sx={{ p: 2, border: 1, borderColor: 'primary.main', backgroundColor: 'action.selected' }}><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}><Box><Typography variant="overline" color="primary.main" sx={{ fontWeight: 800 }}>Curriculum topic</Typography><Typography variant="h6">{selectedOption.title}</Typography><Typography variant="body2" color="text.secondary">{selectedOption.description}</Typography></Box><Stack direction="row" spacing={.75}><Chip label={selectedOption.subject} color="primary" /><Chip label={selectedOption.stage} variant="outlined" /></Stack></Stack></Paper>
+    <Paper elevation={0} sx={{ p: 2, border: 1, borderColor: 'primary.main', backgroundColor: 'action.selected' }}><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}><Box><Typography variant="overline" color="primary.main" sx={{ fontWeight: 800 }}>Curriculum topic</Typography><Typography variant="h6">{selectedOption.title}</Typography><Typography variant="body2" color="text.secondary">{selectedOption.description}</Typography></Box><Stack direction="row" spacing={.75}><Chip label={selectedOption.subject} color="primary" /><Chip label={selectedOption.stage} variant="outlined" />{selectedOption.comingSoon && <Chip label="Coming soon" color="default" />}</Stack></Stack></Paper>
     <PlatformEnginePreview engineId={selectedOption.platformEngineId} mathTopic={selectedOption.activity} topicTitle={selectedOption.title} />
     {selectedOption.simulation && <Paper elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider' }}><Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Guided activity ready</Typography><Typography variant="body2" color="text.secondary">{selectedOption.simulation.config.overview}</Typography></Paper>}
-    <Button variant="contained" startIcon={<SaveOutlinedIcon />} onClick={saveSelectedTopic} disabled={!lesson.title.trim()}>Save topic as lesson</Button>
+    <Button variant="contained" startIcon={<SaveOutlinedIcon />} onClick={saveSelectedTopic} disabled={!lesson.title.trim() || selectedOption.comingSoon}>{selectedOption.comingSoon ? 'Coming soon' : 'Save topic as lesson'}</Button>
   </Stack>
 
   return <Stack spacing={1.5}>
     <Box><Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Choose a curriculum topic</Typography><Typography variant="body2" color="text.secondary">Pick the topic students will learn. The platform automatically attaches the right interactive activity.</Typography></Box>
     <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25}><TextField fullWidth size="small" label="Search topics" value={search} onChange={(event) => setSearch(event.target.value)} /><FormControl size="small" sx={{ minWidth: 160 }}><InputLabel>Subject</InputLabel><Select label="Subject" value={subject} onChange={(event) => setSubject(event.target.value as SubjectFilter)}>{subjects.map((value) => <MenuItem key={value} value={value}>{value === 'All' ? 'All subjects' : value}</MenuItem>)}</Select></FormControl><FormControl size="small" sx={{ minWidth: 150 }}><InputLabel>Stage</InputLabel><Select label="Stage" value={stage} onChange={(event) => setStage(event.target.value as StageFilter)}>{stages.map((value) => <MenuItem key={value} value={value}>{value === 'All' ? 'All stages' : value}</MenuItem>)}</Select></FormControl></Stack>
-    <Grid container spacing={1.25}>{filteredOptions.map((option) => <Grid item xs={12} sm={6} key={option.key}><Box component="button" type="button" onClick={() => selectTopic(option)} sx={{ width: '100%', minHeight: 132, p: 1.5, textAlign: 'left', border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.paper', color: 'text.primary', cursor: 'pointer', font: 'inherit', '&:hover': { borderColor: 'primary.main', backgroundColor: 'action.hover', transform: 'translateY(-2px)' }, transition: 'transform .18s ease, border-color .18s ease' }}><Stack spacing={.75}><Stack direction="row" justifyContent="space-between" spacing={1}><Typography sx={{ fontWeight: 700 }}>{option.title}</Typography><Chip size="small" label={option.subject} /></Stack><Typography variant="body2" color="text.secondary">{option.description}</Typography>{option.activity && <Box sx={{ mt: .25, p: 1, borderRadius: 1.5, backgroundColor: 'action.hover' }}><Typography variant="caption" color="primary.main" sx={{ display: 'block', fontWeight: 800 }}>{option.activity.activity}</Typography><Typography variant="caption" color="text.secondary">{option.activity.activityDescription}</Typography></Box>}<Typography variant="caption" color="primary.main">{option.stage}</Typography></Stack></Box></Grid>)}</Grid>
+    <Grid container spacing={1.25}>{filteredOptions.map((option) => <Grid item xs={12} sm={6} key={option.key}><Box component="button" type="button" disabled={option.comingSoon} aria-disabled={option.comingSoon} onClick={() => selectTopic(option)} sx={{ width: '100%', minHeight: 132, p: 1.5, textAlign: 'left', border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.paper', color: 'text.primary', cursor: option.comingSoon ? 'not-allowed' : 'pointer', opacity: option.comingSoon ? .7 : 1, font: 'inherit', '&:hover': option.comingSoon ? {} : { borderColor: 'primary.main', backgroundColor: 'action.hover', transform: 'translateY(-2px)' }, transition: 'transform .18s ease, border-color .18s ease' }}><Stack spacing={.75}><Stack direction="row" justifyContent="space-between" spacing={1}><Typography sx={{ fontWeight: 700 }}>{option.title}</Typography><Chip size="small" label={option.subject} /></Stack><Typography variant="body2" color="text.secondary">{option.description}</Typography>{option.activity && <Box sx={{ mt: .25, p: 1, borderRadius: 1.5, backgroundColor: 'action.hover' }}><Typography variant="caption" color="primary.main" sx={{ display: 'block', fontWeight: 800 }}>{option.activity.activity}</Typography><Typography variant="caption" color="text.secondary">{option.activity.activityDescription}</Typography></Box>}<Stack direction="row" spacing={.75} alignItems="center"><Chip size="small" label={option.stage} variant="outlined" />{option.comingSoon && <Chip size="small" label="Coming soon" />}</Stack></Stack></Box></Grid>)}</Grid>
     {!filteredOptions.length && <Typography color="text.secondary" sx={{ py: 2 }}>No curriculum topics match these filters.</Typography>}
   </Stack>
 }
