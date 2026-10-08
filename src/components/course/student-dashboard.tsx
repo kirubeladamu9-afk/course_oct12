@@ -53,12 +53,11 @@ import TranslateOutlinedIcon from '@mui/icons-material/TranslateOutlined'
 import VideoCallOutlinedIcon from '@mui/icons-material/VideoCallOutlined'
 import CloseIcon from '@mui/icons-material/Close'
 import SearchIcon from '@mui/icons-material/Search'
-import TuneIcon from '@mui/icons-material/Tune'
-import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
 import { type FC, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type Course } from '@/interfaces/course'
 import ScheduleCalendar, { type ScheduleSession } from '@/components/schedule-calendar'
 import GamificationWidgets from './gamification-widgets'
+import StudentDashboardOverview from './student-dashboard-overview'
 import InteractiveDiagramViewer from './interactive-diagram-viewer'
 import SimulationLesson from './simulation-lesson'
 import { type SimulationConfig } from '@/components/admin/admin-data'
@@ -507,14 +506,45 @@ const WeakAreasPanel: FC<{ enrollments: Array<Pick<DashboardEnrollment, 'id' | '
 
 const OverviewView: FC<{ enrollments: DashboardEnrollment[]; now: Date; onSelectView: (view: DashboardView) => void; onOpenCourse: (courseId: number, lessonId?: number) => void; gamificationData: GamificationData }> = ({ enrollments, now, onSelectView, onOpenCourse, gamificationData }) => {
   const courseEnrollments = enrollments.filter((enrollment) => enrollment.type === 'course' && enrollment.status !== 'completed')
-  const activeCourseCount = courseEnrollments.length
-  const nextClassEnrollment = enrollments.find((enrollment) => enrollment.type === 'class' && enrollment.status === 'active' && enrollment.classRecord?.status === 'open' && classHasStarted(enrollment.classRecord.schedule, now))
-  const nextClass = nextClassEnrollment?.classRecord
+  const courses = courseEnrollments.flatMap((enrollment) => enrollment.course ? [{
+    id: enrollment.course.id,
+    title: enrollment.course.title,
+    category: enrollment.course.category,
+    level: enrollment.course.level,
+    tutor: enrollment.course.tutor,
+    progress: enrollment.progress,
+  }] : [])
+  const latestQuizScores = courseEnrollments.flatMap((enrollment) => Object.values(enrollment.quizResults).map((result) => result.score))
+  const quizCount = latestQuizScores.length
+  const averageQuizScore = quizCount ? Math.round(latestQuizScores.reduce((total, score) => total + score, 0) / quizCount) : null
   const pendingCount = enrollments.filter((enrollment) => enrollment.type === 'class' && enrollment.status === 'pending_schedule').length
-
-  const averageProgress = Math.round(courseEnrollments.reduce((total, enrollment) => total + enrollment.progress, 0) / Math.max(1, courseEnrollments.length))
+  const nextSession = enrollments
+    .filter((enrollment) => enrollment.type === 'class' && enrollment.status === 'active' && enrollment.classRecord?.status === 'open')
+    .flatMap((enrollment) => {
+      const classRecord = enrollment.classRecord
+      if (!classRecord?.course) return []
+      return getLessons(classRecord.course)
+        .filter((lesson) => lesson.type === 'live' && lesson.scheduledAt && new Date(lesson.scheduledAt).getTime() > now.getTime())
+        .map((lesson) => ({ lesson, classRecord }))
+    })
+    .sort((first, second) => new Date(first.lesson.scheduledAt!).getTime() - new Date(second.lesson.scheduledAt!).getTime())[0]
   const displayName = getAuthenticatedUser()?.name?.split(' ')[0] || 'Learner'
-  return <>
+  return <StudentDashboardOverview
+    displayName={displayName}
+    courses={courses}
+    lessonCount={gamificationData.stats.lesson_count}
+    averageQuizScore={averageQuizScore}
+    quizCount={quizCount}
+    learningStreak={gamificationData.stats.current_streak}
+    session={nextSession ? { title: nextSession.lesson.title, courseTitle: nextSession.classRecord.course?.title ?? nextSession.classRecord.title, startsAt: nextSession.lesson.scheduledAt! } : undefined}
+    onOpenCourse={(courseId) => onOpenCourse(courseId)}
+    onSelectView={onSelectView}
+  >
+    <WeakAreasPanel enrollments={enrollments} onOpenCourse={onOpenCourse} />
+    <GamificationWidgets data={gamificationData} />
+    {pendingCount > 0 && <Alert severity="info" icon={<CalendarTodayOutlinedIcon />} action={<Button color="inherit" size="small" onClick={() => onSelectView('classes')}>View classes</Button>} sx={{ mt: 2.25, borderRadius: 3 }}>You have {pendingCount} class {pendingCount === 1 ? 'enrollment' : 'enrollments'} awaiting scheduling.</Alert>}
+  </StudentDashboardOverview>
+  /* Legacy overview markup retained temporarily during replacement.
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 2, mb: 3 }}>
       <Box><Typography variant="body2" sx={{ color: 'primary.main', fontWeight: 800, mb: .5 }}>WELCOME BACK, {displayName.toUpperCase()}</Typography><Typography component="h1" variant="h4" sx={{ fontWeight: 800, letterSpacing: '-.04em' }}>Let&apos;s make learning fun!</Typography><Typography color="text.secondary" variant="body2" sx={{ mt: .75 }}>Here&apos;s a clear view of your learning journey.</Typography></Box>
       <Button variant="outlined" startIcon={<TuneIcon />} sx={{ borderRadius: 5, display: { xs: 'none', sm: 'inline-flex' } }}>Filters</Button>
@@ -538,6 +568,7 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; now: Date; onSelect
     <GamificationWidgets data={gamificationData} />
     {pendingCount > 0 && <Alert severity="info" icon={<CalendarTodayOutlinedIcon />} action={<Button color="inherit" size="small" onClick={() => onSelectView('classes')}>View classes</Button>} sx={{ mt: 2.25, borderRadius: 3 }}>You have {pendingCount} class {pendingCount === 1 ? 'enrollment' : 'enrollments'} awaiting scheduling.</Alert>}
   </>
+  */
 }
 
 const CourseMiniRow: FC<{ course: DashboardCourse; enrollment: DashboardEnrollment; onOpenCourse: (courseId: number) => void }> = ({ course, enrollment, onOpenCourse }) => <Box component="button" type="button" onClick={() => onOpenCourse(course.id)} sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1.5, p: 1.25, border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.paper', cursor: 'pointer', textAlign: 'left', font: 'inherit', '&:hover': { borderColor: 'primary.main' } }}><Box sx={{ display: 'flex', p: 1, borderRadius: 2, color: 'primary.main', backgroundColor: 'action.hover' }}><PlayCircleOutlineIcon /></Box><Box sx={{ flex: 1, minWidth: 0 }}><Typography noWrap sx={{ fontWeight: 600 }}>{course.title}</Typography><LinearProgress variant="determinate" value={enrollment.progress} sx={{ mt: 1, height: 6, borderRadius: 4 }} /></Box><Typography color="primary.main" variant="body2" sx={{ fontWeight: 700 }}>{enrollment.progress}%</Typography></Box>
