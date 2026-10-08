@@ -131,6 +131,7 @@ export const engineForTopic = (subject: string, topic: string): PlatformEngineId
     if (/equation|formula|stoichiometry|redox|oxidation/.test(value)) return 'equation-balance'
     return 'simulation'
   }
+  if (subject === 'Biology' && value === 'photosynthesis') return 'photosynthesis-lab'
   if (subject === 'Biology' && value === 'living & non-living things') return 'living-or-not'
   if (subject === 'Biology' && (value === 'plant structure' || value === 'parts of plants')) return 'plant-labeling'
   if (subject === 'Biology' && value === 'human body parts') return 'human-body-parts'

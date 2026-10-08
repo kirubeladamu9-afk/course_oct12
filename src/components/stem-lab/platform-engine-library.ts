@@ -14,6 +14,7 @@ export type PlatformEngineId =
   | 'drag-drop'
   | 'living-or-not'
   | 'plant-labeling'
+  | 'photosynthesis-lab'
   | 'human-body-parts'
   | 'sense-challenge'
   | 'animal-spotter'
@@ -108,6 +109,7 @@ export const PLATFORM_ENGINES: PlatformEngineDefinition[] = [
   { id: 'molecule-atom', name: 'Molecule / Atom Builder', description: 'Construct atoms and molecule structures from connected parts.', subjects: ['Chemistry'], examples: ['Atomic structure', 'Chemical bonding', 'Organic molecules'], interaction: 'Place particles or atoms and validate the target structure.' },
   { id: 'chemical-bonding', name: 'Chemical Bonding Simulator', description: 'Explore covalent, ionic, and metallic bonding with live electron and energy models.', subjects: ['Chemistry'], examples: ['VSEPR geometry', 'Bond energy', 'Polarity and ions'], interaction: 'Select elements, test bonds, and inspect a physically inspired molecular model.' },
   { id: 'biology-explorer', name: 'Biology Explorer', description: 'Explore labeled structures and reveal connected biological processes.', subjects: ['Biology'], examples: ['Plant parts', 'Cell organelles', 'Human body systems'], interaction: 'Select hotspots to reveal explanations and relationships.' },
+  { id: 'photosynthesis-lab', name: 'Photosynthesis Lab', description: 'See how plants make their own food using sunlight.', subjects: ['Biology'], examples: ['Sunlight', 'Water and carbon dioxide', 'Glucose and oxygen', 'Limiting factors'], interaction: 'Change inputs, calculate the limiting factor, and validate a live photosynthesis challenge.' },
   { id: 'microscope', name: 'Virtual Microscope', description: 'Zoom into specimens and identify structures at increasing magnification.', subjects: ['Biology'], examples: ['Plant cells', 'Animal cells', 'Specimens'], interaction: 'Adjust magnification and inspect labeled structures.' },
   { id: 'timeline', name: 'Timeline / Lifecycle', description: 'Arrange stages and reason about sequence, change, and cause.', subjects: ['Biology', 'Physics'], examples: ['Life cycles', 'Mitosis', 'Historical processes'], interaction: 'Reorder stages and validate the sequence.' },
   { id: 'data-chart', name: 'Data / Chart Builder', description: 'Build charts from values and calculate statistics from the same data.', subjects: ['Math', 'Physics', 'Biology'], examples: ['Mean and median', 'Experimental probability', 'Population data'], interaction: 'Adjust values and read the live visualization.' },
