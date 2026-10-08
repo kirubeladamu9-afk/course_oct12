@@ -13,7 +13,6 @@ import PracticeExamCatalog from '@/components/practice/practice-exam-catalog'
 import PracticeExamPlayer from '@/components/practice/practice-exam-player'
 import InfoPage from '@/components/info/info-page'
 import { BookstorePage } from '@/components/bookstore/bookstore-page'
-import StemLab from '@/components/stem-lab/stem-lab'
 import { navigateTo } from '@/lib/navigation'
 import { type Course } from '@/interfaces/course'
 import { getAuthenticatedUser, getCourses } from '@/services/api'
@@ -87,7 +86,6 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
   const isAboutPath = /^\/about-us\/?$/.test(currentPath)
   const isBookstorePath = /^\/bookstore\/?$/.test(currentPath)
   const isContactPath = /^\/contact-us\/?$/.test(currentPath)
-  const isStemLabPath = /^\/stem-lab\/?$/.test(currentPath)
   const courseMatch = currentPath.match(/^\/courses\/([^/]+)\/?$/)
   const currentUser = getAuthenticatedUser()
   const isAuthenticated = currentUser !== null
@@ -121,13 +119,11 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
                       ? 'Bookstore'
                       : isContactPath
                         ? 'Contact Us'
-                        : isStemLabPath
-                          ? 'STEM Lab'
-                          : courseMatch
+                        : courseMatch
                           ? 'Course'
                           : 'Home'
     document.title = `${pageName} - Courseshap`
-  }, [authMode, currentPath, isAboutPath, isAdminPath, isBookstorePath, isContactPath, isDashboardPath, isPracticeCatalogPath, isStemLabPath, isTutorPath, practiceExamMatch, courseMatch])
+  }, [authMode, currentPath, isAboutPath, isAdminPath, isBookstorePath, isContactPath, isDashboardPath, isPracticeCatalogPath, isTutorPath, practiceExamMatch, courseMatch])
 
   useEffect(() => {
     if (isAdminPath || isDashboardPath || isTutorPath || window.location.hash) return
@@ -135,7 +131,7 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
   }, [authMode, currentPath, isAdminPath, isDashboardPath, isTutorPath])
 
   useEffect(() => {
-    if (isAdminPath && /^\/admin\/stem-lab\/?$/.test(currentPath)) navigateTo('/admin', true)
+    if (/^\/stem-lab\/?$/.test(currentPath)) navigateTo('/', true)
     if (isAdminPath && !canAccessAdmin) navigateTo('/', true)
     if (isTutorPath && !canAccessTutor) navigateTo('/', true)
     if (isDashboardPath && (!isAuthenticated || currentUser?.role === 'admin' || currentUser?.role === 'tutor')) navigateTo(currentUser?.role === 'admin' ? '/admin' : currentUser?.role === 'tutor' ? '/tutor' : '/', true)
@@ -143,7 +139,7 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
   }, [canAccessAdmin, canAccessTutor, currentPath, currentUser?.role, isAdminPath, isAuthenticated, isDashboardPath, isTutorPath])
 
   useEffect(() => {
-    if (isAdminPath || isDashboardPath || isTutorPath || isPracticeCatalogPath || practiceExamMatch || isAboutPath || isBookstorePath || isContactPath || isStemLabPath || courseMatch) {
+    if (isAdminPath || isDashboardPath || isTutorPath || isPracticeCatalogPath || practiceExamMatch || isAboutPath || isBookstorePath || isContactPath || courseMatch) {
       setHomeCourses(null)
       return
     }
@@ -161,11 +157,10 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
     return () => {
       isCurrent = false
     }
-  }, [currentPath, isAboutPath, isAdminPath, isBookstorePath, isContactPath, isDashboardPath, isPracticeCatalogPath, isStemLabPath, isTutorPath, practiceExamMatch])
+  }, [currentPath, isAboutPath, isAdminPath, isBookstorePath, isContactPath, isDashboardPath, isPracticeCatalogPath, isTutorPath, practiceExamMatch])
 
   if ((isAdminPath && !canAccessAdmin) || (isTutorPath && !canAccessTutor) || (isDashboardPath && (!isAuthenticated || currentUser?.role === 'admin' || currentUser?.role === 'tutor'))) return <RouteLoadingState message="Returning to Coursespace..." />
   if (isAdminPath) return <AdminDashboard darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
-  if (isStemLabPath) return <Box component="main"><Header darkMode={darkMode} onSignIn={() => setAuthMode('sign-in')} onToggleDarkMode={onToggleDarkMode} /><Box sx={{ px: { xs: 2, md: 5 }, py: { xs: 3, md: 5 }, background: 'var(--app-content-gradient)' }}><StemLab /></Box><Footer /></Box>
   if (isTutorPath) return <TutorDashboard darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
   if (isDashboardPath) return <StudentDashboard darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
   if (isPracticeCatalogPath) return <PracticeExamCatalog darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />

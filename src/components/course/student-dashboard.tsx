@@ -49,7 +49,6 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import PauseIcon from '@mui/icons-material/Pause'
 import QuizOutlinedIcon from '@mui/icons-material/QuizOutlined'
 import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
-import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined'
 import TranslateOutlinedIcon from '@mui/icons-material/TranslateOutlined'
 import VideoCallOutlinedIcon from '@mui/icons-material/VideoCallOutlined'
 import CloseIcon from '@mui/icons-material/Close'
@@ -62,8 +61,6 @@ import ScheduleCalendar, { type ScheduleSession } from '@/components/schedule-ca
 import GamificationWidgets from './gamification-widgets'
 import InteractiveDiagramViewer from './interactive-diagram-viewer'
 import SimulationLesson from './simulation-lesson'
-import StemLab from '@/components/stem-lab/stem-lab'
-import { type StemTopic } from '@/components/stem-lab/stem-lab-data'
 import { type SimulationConfig } from '@/components/admin/admin-data'
 import { getCurriculumTopicKey, getMathTopic, STEM_CURRICULUM, type MathTopic } from '@/components/admin/stem-curriculum'
 import { getPlatformEngine, type PlatformEngineId } from '@/components/stem-lab/platform-engine-library'
@@ -77,7 +74,7 @@ import { beginQuizAttempt, completeLesson as completeLessonApi, getAuthenticated
 import { navigateTo } from '@/lib/navigation'
 import { calculateOverallGrade } from '@/lib/overall-grade'
 
- type DashboardView = 'overview' | 'calendar' | 'courses' | 'classes' | 'quizzes' | 'purchases' | 'other-courses' | 'other-classes' | 'stem-lab' | 'profile' | 'payments' | 'course-view'
+ type DashboardView = 'overview' | 'calendar' | 'courses' | 'classes' | 'quizzes' | 'purchases' | 'other-courses' | 'other-classes' | 'profile' | 'payments' | 'course-view'
  type EnrollmentType = 'course' | 'class'
  type EnrollmentStatus = 'active' | 'pending_schedule' | 'completed'
  type ClassStatus = 'pending_schedule' | 'open' | 'full' | 'closed'
@@ -456,7 +453,6 @@ const DashboardSidebar: FC<SidebarProps> = ({ activeView, onSelectView }) => {
         </Box>}
       </Box>
       <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mt: 2.25, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Learning</Typography>
-      {navItem('stem-lab', 'STEM Lab', <ScienceOutlinedIcon fontSize="small" />, activeView === 'stem-lab')}
       {navItem('quizzes', 'Quizzes & Results', <QuizOutlinedIcon fontSize="small" />, activeView === 'quizzes')}
       {navItem('purchases', 'My Purchases', <PaymentsOutlinedIcon fontSize="small" />, activeView === 'purchases')}
       {navItem('other-courses', 'Other Courses', <MenuBookOutlinedIcon fontSize="small" />, activeView === 'other-courses')}
@@ -1129,7 +1125,6 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   const [timeSpent, setTimeSpent] = useState<Record<number, number>>({})
   const [quizResults, setQuizResults] = useState<Record<number, Record<number, DashboardQuizResult>>>({})
   const [victoryCelebrationId, setVictoryCelebrationId] = useState(0)
-  const [completedStemTopics, setCompletedStemTopics] = useState<string[]>([])
   const [progressError, setProgressError] = useState<string | null>(null)
   const [profileMessage, setProfileMessage] = useState('')
   const progressSnapshot = useRef({ completedLessons, startedCourses, timeSpent, quizResults })
@@ -1295,7 +1290,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   const selectedCourseProgress = selectedCourse ? getCourseProgress(selectedCourse, completedLessons[selectedCourse.id] ?? []) : 0
   const enrolledCourseIds = new Set(enrollments.filter((enrollment) => enrollment.type === 'course').map((enrollment) => String(enrollment.item_id)))
   const enrolledClassIds = new Set(enrollments.filter((enrollment) => enrollment.type === 'class').map((enrollment) => enrollment.item_id))
-  const pageTitle = activeView === 'course-view' ? selectedCourse?.title ?? 'Course view' : activeView === 'overview' ? 'Dashboard' : activeView === 'calendar' ? 'Calendar' : activeView === 'courses' ? 'My Courses' : activeView === 'classes' ? 'My Classes' : activeView === 'stem-lab' ? 'STEM Lab' : activeView === 'quizzes' ? 'Quizzes & Results' : activeView === 'purchases' ? 'My Purchases' : activeView === 'other-courses' ? 'Other Courses' : activeView === 'other-classes' ? 'Other Classes' : activeView === 'profile' ? 'Profile' : 'Payment History'
+  const pageTitle = activeView === 'course-view' ? selectedCourse?.title ?? 'Course view' : activeView === 'overview' ? 'Dashboard' : activeView === 'calendar' ? 'Calendar' : activeView === 'courses' ? 'My Courses' : activeView === 'classes' ? 'My Classes' : activeView === 'quizzes' ? 'Quizzes & Results' : activeView === 'purchases' ? 'My Purchases' : activeView === 'other-courses' ? 'Other Courses' : activeView === 'other-classes' ? 'Other Classes' : activeView === 'profile' ? 'Profile' : 'Payment History'
 
   useEffect(() => {
     const title = quizActive ? (readOnlyQuizResult ? 'Quiz Results' : 'Quiz') : pageTitle
@@ -1433,7 +1428,6 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
           {activeView === 'calendar' && <StudentCalendarView enrollments={enrollments} now={now} onJoin={(session) => { if (session.lessonId && session.meetingUrl) void joinLiveSession(session.lessonId, session.meetingUrl, session.enrollmentId) }} />}
           {activeView === 'courses' && <CoursesView enrollments={enrollments} completedLessons={completedLessons} onOpenCourse={openCourse} />}
           {activeView === 'classes' && <ClassesView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} gamificationData={gamificationData} />}
-          {activeView === 'stem-lab' && <StemLab completedTopicIds={completedStemTopics} onActivityComplete={(topic: StemTopic) => setCompletedStemTopics((current) => current.includes(topic.id) ? current : [...current, topic.id])} />}
           {activeView === 'quizzes' && <QuizzesView enrollments={enrollments} completedLessons={completedLessons} quizResults={quizResults} onOpenCourse={openCourse} />}
           {activeView === 'purchases' && <PurchasesView />}
           {activeView === 'other-courses' && <OtherCoursesView courses={otherCourses} enrolledCourseIds={enrolledCourseIds} isLoading={isLoadingOtherCourses} error={otherCoursesError} />}
