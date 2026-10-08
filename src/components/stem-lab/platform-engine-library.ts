@@ -10,6 +10,7 @@ export type PlatformEngineId =
   | 'reaction-simulator'
   | 'periodic-table'
   | 'materials-properties'
+  | 'formula-builder'
   | 'drag-drop'
   | 'living-or-not'
   | 'plant-labeling'
@@ -122,6 +123,7 @@ export const PLATFORM_ENGINES: PlatformEngineDefinition[] = [
   { id: 'reaction-simulator', name: 'Reaction Simulator', description: 'Mix substances and observe a reaction.', subjects: ['Chemistry'], examples: ['Balanced equations', 'Limiting reagents', 'Products and leftovers'], interaction: 'Add reactants in stoichiometric ratios and observe products.' },
   { id: 'periodic-table', name: 'Periodic Table Explorer', description: 'Explore real element data, electron shells, categories, and uses.', subjects: ['Chemistry'], examples: ['Atomic number', 'Element categories', 'Electron shells'], interaction: 'Search, filter, inspect, and identify elements.' },
   { id: 'materials-properties', name: 'Property Tester + Mixing Lab', description: "Compare materials by their physical properties, and explore what happens when they're mixed.", subjects: ['Chemistry'], examples: ['Flexibility, hardness, and shininess', 'Dissolving and mixtures', 'Layer separation'], interaction: 'Test material properties, then combine substances and predict the outcome.' },
+  { id: 'formula-builder', name: 'Formula Builder', description: 'Assemble the correct chemical formula from elements.', subjects: ['Chemistry'], examples: ['H₂O', 'CO₂', 'CH₄', 'NaCl'], interaction: 'Build common molecules from draggable atom spheres and validate their composition.' },
 ]
 
 export const getPlatformEngine = (id: PlatformEngineId) => PLATFORM_ENGINES.find((engine) => engine.id === id)
