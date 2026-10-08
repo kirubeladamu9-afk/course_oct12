@@ -137,14 +137,21 @@ const CourseEditorSection: FC<{ title: string; description?: string; expanded: b
   </Accordion>
 )
 
-const StatCard: FC<{ label: string; value: string; detail: string; icon: ReactNode }> = ({ label, value, detail, icon }) => (
-  <Paper elevation={0} sx={{ p: 2.5, borderRadius: 4, border: 1, borderColor: 'divider', backgroundColor: 'background.paper', flex: 1, minWidth: 200 }}>
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-      <Typography color="text.secondary" variant="body2">{label}</Typography>
-      <Box sx={{ color: 'primary.main' }}>{icon}</Box>
-    </Box>
-    <Typography variant="h4" sx={{ mb: 0.5 }}>{value}</Typography>
-    <Typography color="text.secondary" variant="body2">{detail}</Typography>
+const statTones = {
+  teal: { color: '#0b8877', background: 'rgba(11, 136, 119, .1)' },
+  blue: { color: '#4279c5', background: 'rgba(66, 121, 197, .1)' },
+  amber: { color: '#bd791b', background: 'rgba(189, 121, 27, .12)' },
+  violet: { color: '#855dc3', background: 'rgba(133, 93, 195, .11)' },
+}
+
+const StatCard: FC<{ label: string; value: string; detail: string; icon: ReactNode; tone: keyof typeof statTones }> = ({ label, value, detail, icon, tone }) => (
+  <Paper elevation={0} sx={{ p: { xs: 1.75, sm: 2.25 }, borderRadius: 3.5, border: 1, borderColor: 'divider', backgroundColor: 'background.paper', minWidth: 0 }}>
+    <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+      <Typography color="text.secondary" variant="body2" sx={{ fontWeight: 600 }}>{label}</Typography>
+      <Box sx={{ display: 'grid', placeItems: 'center', width: 36, height: 36, flexShrink: 0, borderRadius: 2.25, color: statTones[tone].color, bgcolor: statTones[tone].background }}>{icon}</Box>
+    </Stack>
+    <Typography variant="h4" sx={{ mt: 1.25, fontSize: { xs: '1.65rem', sm: '2rem' }, fontWeight: 800, letterSpacing: '-.04em', lineHeight: 1.15, overflowWrap: 'anywhere' }}>{value}</Typography>
+    <Typography color="text.secondary" variant="caption">{detail}</Typography>
   </Paper>
 )
 
@@ -536,7 +543,7 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'revenueByMonth' | 'enrol
   return (
     <Stack spacing={2}>
       <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2}>
-        <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', flex: 1, minWidth: 0 }}>
+        <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 3.5, flex: 1, minWidth: 0 }}>
           <Typography variant="h6">Revenue overview</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Monthly revenue performance</Typography>
           <Box component="svg" viewBox="0 0 580 190" sx={{ width: '100%', height: 220 }} role="img" aria-label="Revenue trend chart">
@@ -545,7 +552,7 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'revenueByMonth' | 'enrol
             {revenueByMonth.map(({ label }, index) => <text key={label} x={20 + (540 * index) / Math.max(revenueByMonth.length - 1, 1)} y="180" fill={theme.palette.text.secondary} fontSize="12" textAnchor="middle">{label}</text>)}
           </Box>
         </Paper>
-        <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', flex: 1, minWidth: 0 }}>
+        <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 3.5, flex: 1, minWidth: 0 }}>
           <Typography variant="h6">Course enrollments</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Students enrolled by category</Typography>
           <Box component="svg" viewBox="0 0 580 190" sx={{ width: '100%', height: 220 }} role="img" aria-label="Course enrollment chart">
@@ -555,7 +562,7 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'revenueByMonth' | 'enrol
         </Paper>
       </Stack>
       <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2}>
-        <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', flex: 1, minWidth: 0 }}>
+        <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 3.5, flex: 1, minWidth: 0 }}>
           <Typography variant="h6">Revenue by category</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Published course revenue distribution</Typography>
           {revenueByCategory.length > 0 ? <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, flexWrap: 'wrap' }}>
@@ -573,7 +580,7 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'revenueByMonth' | 'enrol
             </Stack>
           </Box> : <Typography color="text.secondary">No category revenue available yet.</Typography>}
         </Paper>
-        <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', flex: 1, minWidth: 0 }}>
+        <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 3.5, flex: 1, minWidth: 0 }}>
           <Typography variant="h6">Top courses by enrollment</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Courses with the most active learners</Typography>
           {topCourses.length > 0 ? <Stack spacing={1.75}>
@@ -588,7 +595,7 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'revenueByMonth' | 'enrol
   )
 }
 
-const WeakAreasPanel: FC<{ weakAreas: AdminWeakArea[] }> = ({ weakAreas }) => <Paper elevation={0} sx={{ p: 2.5, mb: 2, borderRadius: 4, border: 1, borderColor: weakAreas.length ? 'warning.main' : 'divider', backgroundColor: 'background.paper' }}>
+const WeakAreasPanel: FC<{ weakAreas: AdminWeakArea[] }> = ({ weakAreas }) => <Paper elevation={0} sx={{ p: 2.5, mb: 2, borderRadius: 3.5, border: 1, borderColor: weakAreas.length ? 'warning.main' : 'divider', backgroundColor: 'background.paper' }}>
   <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 2 }}>
     <Box>
       <Typography component="h2" variant="h6">Topics needing attention</Typography>
@@ -596,7 +603,7 @@ const WeakAreasPanel: FC<{ weakAreas: AdminWeakArea[] }> = ({ weakAreas }) => <P
     </Box>
     <Chip size="small" color={weakAreas.length ? 'warning' : 'success'} label={weakAreas.length ? `${weakAreas.length} weak topic${weakAreas.length === 1 ? '' : 's'}` : 'No weak topics'} />
   </Stack>
-  {weakAreas.length === 0 ? <Typography color="text.secondary" variant="body2">Topic performance is on track. Weak areas will appear here as learner responses are recorded.</Typography> : <Stack spacing={1.25}>{weakAreas.map((area) => <Box key={area.topic} sx={{ p: 1.5, borderRadius: 1.5, backgroundColor: (theme) => alpha(theme.palette.warning.main, theme.palette.mode === 'dark' ? 0.16 : 0.08) }}>
+  {weakAreas.length === 0 ? <Typography color="text.secondary" variant="body2">Topic performance is on track. Weak areas will appear here as learner responses are recorded.</Typography> : <Stack spacing={1.25}>{weakAreas.map((area) => <Box key={area.topic} sx={{ p: 1.5, borderRadius: 2.5, backgroundColor: (theme) => alpha(theme.palette.warning.main, theme.palette.mode === 'dark' ? 0.16 : 0.08) }}>
     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
       <Typography sx={{ fontWeight: 700 }}>{area.topic}</Typography>
       <Chip size="small" color="warning" label={`${area.accuracy}% accuracy`} sx={{ alignSelf: { xs: 'flex-start', sm: 'center' } }} />
@@ -606,7 +613,7 @@ const WeakAreasPanel: FC<{ weakAreas: AdminWeakArea[] }> = ({ weakAreas }) => <P
   </Box>)}</Stack>}
 </Paper>
 
-const OverviewPage: FC = () => {
+const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
   const [overview, setOverview] = useState<AdminDashboardOverview | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -641,13 +648,47 @@ const OverviewPage: FC = () => {
   }, [])
 
   return <>
-    <PageHeading title="Dashboard overview" description="A snapshot of your learning platform." />
-    {isLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading dashboard data" /></Box> : loadError ? <Paper elevation={0} sx={{ p: 4, border: 1, borderColor: 'divider' }}><Typography color="error" sx={{ mb: 2 }}>{loadError}</Typography><Button label="Retry" onClick={() => { setIsLoading(true); void reloadOverview() }} /></Paper> : overview && <><AtRiskStudentsPanel students={atRiskStudents} loading={atRiskLoading} error={atRiskError} /><Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 4 }}>
-      <StatCard label="Total revenue" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(overview.totalRevenue)} detail="Published course enrollments" icon={<PaymentsOutlinedIcon />} />
-      <StatCard label="Active students" value={new Intl.NumberFormat('en-US').format(overview.activeStudents)} detail="Across published courses" icon={<GroupOutlinedIcon />} />
-      <StatCard label="Published courses" value={new Intl.NumberFormat('en-US').format(overview.publishedCourses)} detail={`${overview.draftCourses} course${overview.draftCourses === 1 ? '' : 's'} in draft`} icon={<SchoolOutlinedIcon />} />
-      <StatCard label="Active tutors" value={new Intl.NumberFormat('en-US').format(overview.activeTutors)} detail={`${overview.inactiveTutors} inactive tutor${overview.inactiveTutors === 1 ? '' : 's'}`} icon={<PersonOutlineIcon />} />
+    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'flex-end' }} spacing={2.5} sx={{ mb: 2.25 }}>
+      <Box>
+        <Stack direction="row" alignItems="center" spacing={.75} sx={{ mb: .75, color: 'primary.main' }}>
+          <DashboardOutlinedIcon sx={{ fontSize: 17 }} />
+          <Typography variant="overline" sx={{ fontWeight: 800, letterSpacing: 1.5, lineHeight: 1.5 }}>ADMIN WORKSPACE</Typography>
+        </Stack>
+        <Typography component="h1" sx={{ fontSize: { xs: '1.9rem', sm: '2.4rem' }, fontWeight: 800, letterSpacing: '-.055em', lineHeight: 1.1 }}>
+          Welcome back, {displayName}
+        </Typography>
+        <Typography color="text.secondary" sx={{ mt: .8 }}>Here’s the latest snapshot of your learning platform.</Typography>
+      </Box>
     </Stack>
+
+    <Paper elevation={0} sx={{ position: 'relative', overflow: 'hidden', mb: 2.25, borderRadius: { xs: 3.5, md: 4.5 }, color: '#fff', background: (theme) => theme.palette.mode === 'dark' ? 'linear-gradient(120deg, #103b39 0%, #145d53 58%, #147b68 100%)' : 'linear-gradient(120deg, #123e3a 0%, #17675c 58%, #168773 100%)' }}>
+      <Box aria-hidden="true" sx={{ position: 'absolute', width: 420, height: 420, right: { xs: -250, md: 70 }, top: -280, borderRadius: '50%', border: '1px solid rgba(255,255,255,.11)', boxShadow: '0 0 0 42px rgba(255,255,255,.035), 0 0 0 84px rgba(255,255,255,.025)' }} />
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} spacing={3} sx={{ position: 'relative', p: { xs: 2.5, sm: 3.5, md: 4 } }}>
+        <Box sx={{ maxWidth: 680 }}>
+          <Chip size="small" icon={<DashboardOutlinedIcon />} label="PLATFORM OVERVIEW" sx={{ mb: 2, color: '#e6fff8', bgcolor: 'rgba(255,255,255,.13)', '& .MuiChip-icon': { color: 'inherit' }, fontWeight: 700, letterSpacing: '.04em' }} />
+          <Typography component="h2" variant="h4" sx={{ fontSize: { xs: '1.55rem', sm: '2rem' }, fontWeight: 800, letterSpacing: '-.035em', lineHeight: 1.2 }}>
+            Your learning community, in focus.
+          </Typography>
+          <Typography sx={{ mt: 1, color: 'rgba(255,255,255,.76)', maxWidth: 560 }}>
+            Monitor platform performance across revenue, active students, courses, and tutors.
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', justifyContent: { xs: 'flex-start', md: 'center' }, alignItems: 'center', minWidth: { md: 190 }, pr: { md: 2 } }}>
+          <Box sx={{ width: 148, height: 148, borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.2)' }}>
+            <Box sx={{ width: 128, height: 128, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(10,67,59,.48)', border: '1px solid rgba(255,255,255,.16)' }}>
+              <DashboardOutlinedIcon sx={{ color: '#b8f0d9', fontSize: 54 }} />
+            </Box>
+          </Box>
+        </Box>
+      </Stack>
+    </Paper>
+
+    {isLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading dashboard data" /></Box> : loadError ? <Paper elevation={0} sx={{ p: 4, border: 1, borderColor: 'divider', borderRadius: 3.5 }}><Typography color="error" sx={{ mb: 2 }}>{loadError}</Typography><Button label="Retry" onClick={() => { setIsLoading(true); void reloadOverview() }} /></Paper> : overview && <><AtRiskStudentsPanel students={atRiskStudents} loading={atRiskLoading} error={atRiskError} /><Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.25, sm: 1.75 }, mb: 2.25 }}>
+      <StatCard label="Total revenue" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(overview.totalRevenue)} detail="Published course enrollments" icon={<PaymentsOutlinedIcon fontSize="small" />} tone="teal" />
+      <StatCard label="Active students" value={new Intl.NumberFormat('en-US').format(overview.activeStudents)} detail="Across published courses" icon={<GroupOutlinedIcon fontSize="small" />} tone="blue" />
+      <StatCard label="Published courses" value={new Intl.NumberFormat('en-US').format(overview.publishedCourses)} detail={`${overview.draftCourses} course${overview.draftCourses === 1 ? '' : 's'} in draft`} icon={<SchoolOutlinedIcon fontSize="small" />} tone="violet" />
+      <StatCard label="Active tutors" value={new Intl.NumberFormat('en-US').format(overview.activeTutors)} detail={`${overview.inactiveTutors} inactive tutor${overview.inactiveTutors === 1 ? '' : 's'}`} icon={<PersonOutlineIcon fontSize="small" />} tone="amber" />
+    </Box>
     <WeakAreasPanel weakAreas={overview.weakAreas} />
     <DashboardCharts revenueByMonth={overview.revenueByMonth} enrollmentsByCategory={overview.enrollmentsByCategory} revenueByCategory={overview.revenueByCategory} topCourses={overview.topCourses} /></>}
   </>
@@ -1413,7 +1454,7 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
       case 'reports': return <ReportsPage />
       case 'violations': return <ViolationsPage />
       case 'users': return <UsersPage />
-      default: return <OverviewPage />
+      default: return <OverviewPage displayName={adminUser?.name || 'Admin'} />
     }
   }, [adminUser, pathname, section])
 

@@ -6,21 +6,29 @@ import CardContent from '@mui/material/CardContent'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
+import Drawer from '@mui/material/Drawer'
 import FormControl from '@mui/material/FormControl'
+import IconButton from '@mui/material/IconButton'
+import Menu from '@mui/material/Menu'
+import Tooltip from '@mui/material/Tooltip'
 import InputLabel from '@mui/material/InputLabel'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
-import Tab from '@mui/material/Tab'
-import Tabs from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
-import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
+import useMediaQuery from '@mui/material/useMediaQuery'
+import { alpha, useTheme } from '@mui/material/styles'
+import CalendarTodayOutlinedIcon from '@mui/icons-material/CalendarTodayOutlined'
 import ClassOutlinedIcon from '@mui/icons-material/ClassOutlined'
+import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
+import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined'
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined'
+import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined'
+import MenuIcon from '@mui/icons-material/Menu'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
+import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
 import { type FC, useEffect, useMemo, useRef, useState } from 'react'
 import { CourseEditor } from '@/components/admin/admin-dashboard'
 import ScheduleCalendar, { type ScheduleSession } from '@/components/schedule-calendar'
@@ -33,6 +41,7 @@ import { calculateOverallGrade } from '@/lib/overall-grade'
 import { toast } from '@/components/toast'
 import Footer from '@/components/footer/footer'
 import { signOut } from '@/services/api'
+import { Logo } from '@/components/logo'
 
 type View = 'overview' | 'schedule' | 'courses' | 'classes' | 'students' | 'profile'
 type ProgressTarget = { type: 'course' | 'class'; id: number; title: string; modules: AdminModule[] }
@@ -151,7 +160,13 @@ const TutorScheduleView: FC<{ classes: TutorClass[]; now: Date }> = ({ classes, 
   />
 }
 
+const drawerWidth = 272
+
 const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onToggleDarkMode: () => void }) => {
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [profileAnchor, setProfileAnchor] = useState<null | HTMLElement>(null)
   const [view, setView] = useState<View>('overview')
   const [overview, setOverview] = useState<TutorOverview | null>(null)
   const [courses, setCourses] = useState<Awaited<ReturnType<typeof getTutorCourses>>>([])
@@ -346,24 +361,88 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
     })
   }
 
+  const selectView = (nextView: View) => {
+    setView(nextView)
+    setProgressTarget(null)
+    setError('')
+    if (nextView !== 'profile') setProfileError('')
+    setMobileOpen(false)
+  }
+
+  const navButton = (nextView: View, label: string, icon: React.ReactNode) => <Box
+    key={nextView}
+    component="button"
+    type="button"
+    aria-current={view === nextView ? 'page' : undefined}
+    onClick={() => selectView(nextView)}
+    sx={{
+      width: '100%', display: 'flex', alignItems: 'center', gap: 1.25, border: 0, borderRadius: 2.5, px: 1.5, py: 1.05, mb: .45,
+      backgroundColor: view === nextView ? 'primary.main' : 'transparent', color: view === nextView ? 'primary.contrastText' : 'text.secondary',
+      cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all .18s ease',
+      boxShadow: view === nextView ? (currentTheme) => `0 7px 16px ${alpha(currentTheme.palette.primary.main, 0.22)}` : 'none',
+      '&:hover': { backgroundColor: view === nextView ? 'primary.dark' : 'action.hover', color: view === nextView ? 'primary.contrastText' : 'primary.main', transform: view === nextView ? 'none' : 'translateX(2px)' },
+    }}
+  ><Box sx={{ display: 'flex', opacity: view === nextView ? 1 : .82 }}>{icon}</Box><Typography variant="body2" sx={{ flex: 1, fontWeight: view === nextView ? 700 : 500 }}>{label}</Typography></Box>
+
+  const sidebar = <Box sx={{ width: drawerWidth, height: '100%', overflowY: 'auto', backgroundColor: 'background.paper', display: 'flex', flexDirection: 'column', borderRight: 1, borderColor: 'divider' }}>
+    <Box sx={{ px: 3, pt: 2.5, pb: 2.25, borderBottom: 1, borderColor: 'divider' }}><Box sx={{ transform: 'scale(.82)', transformOrigin: 'left center', width: '122%' }}><Logo /></Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: .2 }}>Your teaching workspace</Typography></Box>
+    <Box component="nav" aria-label="Tutor dashboard navigation" sx={{ px: 1.75, py: 2, flex: 1 }}>
+      <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Workspace</Typography>
+      {navButton('overview', 'Dashboard', <DashboardOutlinedIcon fontSize="small" />)}
+      {navButton('schedule', 'Schedule', <CalendarTodayOutlinedIcon fontSize="small" />)}
+      <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mt: 2.25, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Teaching</Typography>
+      {navButton('courses', 'My Courses', <SchoolOutlinedIcon fontSize="small" />)}
+      {navButton('classes', 'My Classes', <ClassOutlinedIcon fontSize="small" />)}
+      {navButton('students', 'Students & Attendance', <GroupsOutlinedIcon fontSize="small" />)}
+      <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mt: 2.25, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Account</Typography>
+      {navButton('profile', 'Profile', <PersonOutlineIcon fontSize="small" />)}
+    </Box>
+    <Box sx={{ p: 1.75, pt: 1, borderTop: 1, borderColor: 'divider' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, p: 1.25, mb: 1.25, borderRadius: 3, background: (currentTheme) => `linear-gradient(135deg, ${alpha(currentTheme.palette.primary.main, currentTheme.palette.mode === 'dark' ? 0.22 : 0.10)}, ${alpha(currentTheme.palette.primary.main, currentTheme.palette.mode === 'dark' ? 0.10 : 0.04)})` }}><Avatar sx={{ width: 34, height: 34, bgcolor: 'primary.main', fontSize: 14 }}>{(user?.name || overview?.tutor.name || 'Tutor').charAt(0)}</Avatar><Box sx={{ minWidth: 0 }}><Typography variant="body2" noWrap sx={{ fontWeight: 800 }}>{user?.name || overview?.tutor.name || 'Tutor'}</Typography><Typography variant="caption" color="text.secondary">Tutor account</Typography></Box></Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1, py: .7 }}><SchoolOutlinedIcon sx={{ color: 'primary.main' }} fontSize="small" /><Typography variant="caption" color="text.secondary">Support every learner&apos;s progress.</Typography></Box>
+    </Box>
+  </Box>
+
   if (loading) return <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress aria-label="Loading tutor portal" /></Box>
 
-  return <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default' }}>
-    <Box sx={{ px: { xs: 2, md: 5 }, py: 2, backgroundColor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
-      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1.5}>
-        <Box><Typography variant="h5" sx={{ fontWeight: 700 }}>Tutor Portal</Typography><Typography variant="body2" color="text.secondary">Welcome, {user?.name || overview?.tutor.name || 'Tutor'}</Typography></Box>
-        <Stack direction="row" spacing={1}><Button size="small" onClick={onToggleDarkMode}>{darkMode ? 'Light mode' : 'Dark mode'}</Button><Button size="small" onClick={handleSignOut}>Sign out</Button></Stack>
-      </Stack>
-    </Box>
-    <Box sx={{ maxWidth: 1440, mx: 'auto', p: { xs: 2, md: 4 } }}>
+  return <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }}>
+    {isMobile ? <Drawer variant="temporary" anchor="left" open={mobileOpen} onClose={() => setMobileOpen(false)} ModalProps={{ keepMounted: true }} PaperProps={{ sx: { width: drawerWidth, maxWidth: 'calc(100vw - 48px)' } }}>{sidebar}</Drawer> : <Box sx={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: drawerWidth, zIndex: 'drawer' }}>{sidebar}</Box>}
+    <Box sx={{ flex: 1, minWidth: 0, ml: { xs: 0, md: `${drawerWidth}px` }, display: 'flex', flexDirection: 'column' }}>
+      <Box component="header" sx={{ position: 'sticky', top: 0, zIndex: 'appBar', minHeight: 82, px: { xs: 2, md: 3.5 }, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, backgroundColor: (currentTheme) => alpha(currentTheme.palette.background.paper, currentTheme.palette.mode === 'dark' ? 0.96 : 0.82), backdropFilter: 'blur(16px)', borderBottom: 1, borderColor: 'divider' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+          {isMobile && <IconButton onClick={() => setMobileOpen(true)} aria-label="Open tutor navigation"><MenuIcon /></IconButton>}
+          <Box sx={{ minWidth: 0 }}><Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: .8, lineHeight: 1 }}>Tutor workspace</Typography><Typography variant="h6" noWrap sx={{ fontWeight: 800, lineHeight: 1.35 }}>{pageTitle}</Typography></Box>
+        </Box>
+        <Stack direction="row" alignItems="center" spacing={.75}>
+          <Tooltip title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}><IconButton onClick={onToggleDarkMode} aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>{darkMode ? <LightModeOutlinedIcon /> : <DarkModeOutlinedIcon />}</IconButton></Tooltip>
+          <Tooltip title="Open profile menu"><IconButton id="tutor-profile-button" onClick={(event) => setProfileAnchor(event.currentTarget)} aria-label="Open tutor profile menu" aria-controls={profileAnchor ? 'tutor-profile-menu' : undefined} aria-haspopup="true" aria-expanded={profileAnchor ? 'true' : undefined} sx={{ p: .25 }}><Avatar sx={{ width: 34, height: 34, bgcolor: 'primary.main', fontSize: 14 }}>{(user?.name || overview?.tutor.name || 'Tutor').charAt(0)}</Avatar></IconButton></Tooltip>
+          <Menu id="tutor-profile-menu" anchorEl={profileAnchor} open={Boolean(profileAnchor)} onClose={() => setProfileAnchor(null)} MenuListProps={{ 'aria-labelledby': 'tutor-profile-button' }} PaperProps={{ sx: { minWidth: 190, borderRadius: 2, p: .75 } }}>
+            <MenuItem onClick={() => { setProfileAnchor(null); selectView('profile') }}><PersonOutlineIcon fontSize="small" sx={{ mr: 1 }} />{user?.name || overview?.tutor.name || 'Tutor profile'}</MenuItem>
+            <MenuItem onClick={() => { setProfileAnchor(null); handleSignOut() }}>Sign out</MenuItem>
+          </Menu>
+        </Stack>
+      </Box>
+      <Box component="main" sx={{ flex: 1, maxWidth: 1440, mx: 'auto', width: '100%', p: { xs: 2, sm: 2.5, md: 4 } }}>
       {courseDraft && <Paper elevation={0} sx={{ mb: 3, p: 2.5, border: 1, borderColor: 'primary.main' }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}><Typography variant="h5">Edit course curriculum</Typography><Stack direction="row" spacing={1}><Button onClick={() => setCourseDraft(null)}>Cancel</Button><Button variant="contained" onClick={() => void saveCourseDraft()} disabled={saving}>Save curriculum</Button></Stack></Stack><CourseEditor curriculumOnly allowedLessonTypes={['video', 'article', 'quiz']} course={courseDraft} onChange={setCourseDraft} /></Paper>}
       {classDraft && <Paper elevation={0} sx={{ mb: 3, p: 2.5, border: 1, borderColor: 'primary.main' }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}><Typography variant="h5">Edit class curriculum</Typography><Stack direction="row" spacing={1}><Button onClick={() => setClassDraft(null)}>Cancel</Button><Button variant="contained" onClick={() => void saveClassDraft()} disabled={saving}>Save curriculum</Button></Stack></Stack><CourseEditor curriculumOnly course={classDraft.course} onChange={(course) => setClassDraft((current) => current ? { ...current, course } : current)} /></Paper>}
-      <Tabs value={view} onChange={(_, next) => { setView(next); setProgressTarget(null); setError(''); if (next !== 'profile') setProfileError('') }} variant="fullWidth" aria-label="Tutor portal sections" sx={{ mb: 3 }}>
-        <Tab value="overview" label="Overview" /><Tab value="schedule" label="Schedule" /><Tab value="courses" label="My Courses" /><Tab value="classes" label="My Classes" /><Tab value="students" label="Students & Attendance" /><Tab value="profile" label="Profile" />
-      </Tabs>
       {error && view !== 'profile' && <Paper sx={{ p: 2, mb: 2, border: 1, borderColor: 'error.main' }}><Typography color="error">{error}</Typography></Paper>}
       {profileError && view === 'profile' && <Paper sx={{ p: 2, mb: 2, border: 1, borderColor: 'error.main' }}><Typography color="error">{profileError}</Typography></Paper>}
-      {view === 'overview' && overview && <><Typography variant="h4" sx={{ mb: 2.25 }}>Teaching overview</Typography><Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 2, mb: 2 }}>{statItems(overview).map((item) => <Card key={item.label} elevation={0} sx={{ minHeight: 154, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper' }}><CardContent sx={{ p: 3, '&:last-child': { pb: 3 } }}><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography color="text.secondary" variant="body2">{item.label}</Typography>{item.icon}</Stack><Typography variant="h4" sx={{ mt: 1.5, fontWeight: 800 }}>{item.value}</Typography></CardContent></Card>)}</Box><AtRiskStudentsPanel students={atRiskStudents} loading={atRiskLoading} error={atRiskError} /><Paper elevation={0} sx={{ mt: 2, p: 3, borderRadius: 3, border: 1, borderColor: 'divider' }}><Typography variant="h6" sx={{ mb: 1 }}>Your teaching assignments</Typography><Typography color="text.secondary">Manage class rosters, attendance, and your profile from the sections above.</Typography></Paper></>}
+      {view === 'overview' && overview && <>
+        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'flex-end' }} spacing={2.5} sx={{ mb: 3 }}>
+          <Box><Stack direction="row" alignItems="center" spacing={.75} sx={{ mb: .75, color: 'primary.main' }}><SchoolOutlinedIcon sx={{ fontSize: 17 }} /><Typography variant="overline" sx={{ fontWeight: 800, letterSpacing: 1.5, lineHeight: 1.5 }}>YOUR TEACHING SPACE</Typography></Stack><Typography component="h1" sx={{ fontSize: { xs: '1.9rem', sm: '2.4rem' }, fontWeight: 800, letterSpacing: '-.055em', lineHeight: 1.1 }}>Welcome back, {(user?.name || overview.tutor.name || 'Tutor').split(/\s+/)[0]}</Typography><Typography color="text.secondary" sx={{ mt: .8 }}>Here&apos;s what&apos;s happening across your teaching workspace.</Typography></Box>
+          <Button variant="outlined" startIcon={<CalendarTodayOutlinedIcon />} onClick={() => selectView('schedule')} sx={{ alignSelf: { xs: 'flex-start', sm: 'auto' }, borderRadius: 2.5, px: 2 }}>View schedule</Button>
+        </Stack>
+        <Paper elevation={0} sx={{ position: 'relative', overflow: 'hidden', mb: 2.25, borderRadius: { xs: 3.5, md: 4.5 }, color: '#fff', background: (currentTheme) => currentTheme.palette.mode === 'dark' ? 'linear-gradient(120deg, #103b39 0%, #145d53 58%, #147b68 100%)' : 'linear-gradient(120deg, #123e3a 0%, #17675c 58%, #168773 100%)' }}>
+          <Box aria-hidden="true" sx={{ position: 'absolute', width: 420, height: 420, right: { xs: -250, md: 70 }, top: -280, borderRadius: '50%', border: '1px solid rgba(255,255,255,.11)', boxShadow: '0 0 0 42px rgba(255,255,255,.035), 0 0 0 84px rgba(255,255,255,.025)' }} />
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} spacing={3} sx={{ position: 'relative', p: { xs: 2.5, sm: 3.5, md: 4 } }}>
+            <Box sx={{ maxWidth: 650 }}><Chip size="small" icon={<GroupsOutlinedIcon />} label="YOUR IMPACT, AT A GLANCE" sx={{ mb: 2, color: '#e6fff8', bgcolor: 'rgba(255,255,255,.13)', '& .MuiChip-icon': { color: 'inherit' }, fontWeight: 700, letterSpacing: '.04em' }} /><Typography variant="h4" sx={{ fontSize: { xs: '1.55rem', sm: '2rem' }, fontWeight: 800, letterSpacing: '-.035em', lineHeight: 1.2 }}>Inspiring learning starts with you</Typography><Typography sx={{ mt: 1, color: 'rgba(255,255,255,.76)', maxWidth: 540 }}>Review your courses, guide students through their progress, and keep every class moving forward.</Typography><Stack direction="row" spacing={1.25} sx={{ mt: 2.5 }}><Button variant="contained" onClick={() => selectView('courses')} sx={{ borderRadius: 2.5, px: 2.25, color: '#12463e', bgcolor: '#fff', fontWeight: 800, boxShadow: 'none', '&:hover': { bgcolor: '#e8f8f2', boxShadow: 'none' } }}>Manage courses</Button><Button variant="outlined" onClick={() => selectView('students')} sx={{ borderRadius: 2.5, color: '#fff', borderColor: 'rgba(255,255,255,.45)', '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,.08)' } }}>View students</Button></Stack></Box>
+            <Box sx={{ minWidth: { md: 190 }, p: { xs: 2, md: 2.5 }, borderRadius: 3, bgcolor: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.16)' }}><Typography variant="overline" sx={{ color: 'rgba(255,255,255,.72)', fontWeight: 700, letterSpacing: '.08em' }}>UPCOMING CLASSES</Typography><Typography variant="h3" sx={{ mt: .5, fontWeight: 800, lineHeight: 1 }}>{overview.upcomingClasses}</Typography><Typography variant="body2" sx={{ mt: .75, color: 'rgba(255,255,255,.76)' }}>Sessions on your schedule</Typography></Box>
+          </Stack>
+        </Paper>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.25, sm: 1.75 }, mb: 2.25 }}>{statItems(overview).map((item, index) => <Card key={item.label} elevation={0} sx={{ minHeight: 138, border: 1, borderColor: 'divider', borderRadius: 3.5, backgroundColor: 'background.paper' }}><CardContent sx={{ p: { xs: 1.75, sm: 2.25 }, '&:last-child': { pb: { xs: 1.75, sm: 2.25 } } }}><Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}><Typography color="text.secondary" variant="body2" sx={{ fontWeight: 600 }}>{item.label}</Typography><Box sx={{ display: 'grid', placeItems: 'center', width: 36, height: 36, flexShrink: 0, borderRadius: 2.25, color: ['#0b8877', '#4279c5', '#855dc3', '#bd791b'][index], bgcolor: ['rgba(11,136,119,.1)', 'rgba(66,121,197,.1)', 'rgba(133,93,195,.11)', 'rgba(189,121,27,.12)'][index] }}>{item.icon}</Box></Stack><Typography variant="h4" sx={{ mt: 1.25, fontWeight: 800, letterSpacing: '-.04em' }}>{item.value}</Typography><Typography variant="caption" color="text.secondary">{['Ready to teach', 'Courses in your workspace', 'Learners you support', 'On your schedule'][index]}</Typography></CardContent></Card>)}</Box>
+        <AtRiskStudentsPanel students={atRiskStudents} loading={atRiskLoading} error={atRiskError} />
+        <Paper elevation={0} sx={{ mt: 2.25, p: { xs: 2.25, sm: 3 }, borderRadius: 3.5, border: 1, borderColor: 'divider' }}><Typography variant="h6" sx={{ mb: 1, fontWeight: 800 }}>Your teaching assignments</Typography><Typography color="text.secondary">Manage class rosters, attendance, and your profile from the sections above.</Typography><Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 2 }}><Chip icon={<SchoolOutlinedIcon />} label={`${overview.totalCourses} courses`} variant="outlined" /><Chip icon={<ClassOutlinedIcon />} label={`${overview.totalClasses} classes`} variant="outlined" /><Chip icon={<GroupsOutlinedIcon />} label={`${overview.totalStudents} students`} variant="outlined" /></Stack></Paper>
+      </>}
       {view === 'schedule' && <TutorScheduleView classes={classes} now={now} />}
       {view === 'courses' && !progressTarget && <><Box sx={{ mb: 3 }}><Typography variant="h4">My courses</Typography><Typography color="text.secondary">Curriculum and student progress for your assigned courses</Typography></Box><Stack spacing={2}>{courses.length ? courses.map((course) => <Paper key={course.id} elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider' }}><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={2}><Box><Typography variant="h6">{course.title}</Typography><Typography color="text.secondary">{course.category} · {course.students} students</Typography></Box><Stack direction="row" spacing={1}><Button size="small" variant="outlined" onClick={() => setProgressTarget({ type: 'course', id: course.id, title: course.title, modules: course.modules })}>Student Progress</Button><Button size="small" variant="outlined" onClick={() => manageCourse(course)}>Edit curriculum</Button></Stack></Stack></Paper>) : <Typography color="text.secondary">No courses assigned yet.</Typography>}</Stack></>}
       {view === 'classes' && !progressTarget && <><Box sx={{ mb: 3 }}><Typography variant="h4">My classes</Typography><Typography color="text.secondary">Rosters, attendance, curriculum, and student progress for your assigned classes</Typography></Box><Stack spacing={2}>{classes.length ? classes.map((classRecord) => <Paper key={classRecord.id} elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider' }}><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={2}><Box><Typography variant="h6">{classRecord.title}</Typography><Typography color="text.secondary">{classRecord.enrolledCount} enrolled students · {classRecord.status}</Typography><Typography color="text.secondary" variant="body2">{classRecord.schedule.startDate || 'Start date pending'} – {classRecord.schedule.endDate || 'End date pending'}</Typography></Box><Stack direction="row" spacing={1}><Button size="small" variant="outlined" onClick={() => { setProgressTarget({ type: 'class', id: classRecord.id, title: classRecord.title, modules: classRecord.modules }); setView('classes') }}>Student Progress</Button><Button size="small" variant="outlined" onClick={() => { setSelectedClassId(classRecord.id); setProgressTarget(null); setView('students') }}>Students & attendance</Button><Button size="small" variant="outlined" onClick={() => manageClass(classRecord)}>Edit curriculum</Button></Stack></Stack></Paper>) : <Typography color="text.secondary">No classes assigned yet.</Typography>}</Stack></>}
@@ -371,8 +450,9 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
       {view === 'students' && selectedClass && !progressTarget && <StudentsAttendanceView selectedClass={selectedClass} students={students} liveLessons={liveLessons} onMarkAttendance={markAttendance} studentsLoading={studentsLoading} onBack={() => setView('classes')} />}
       {view === 'students' && !selectedClass && <><Typography variant="h4" sx={{ mb: 3 }}>Students & attendance</Typography><FormControl sx={{ minWidth: { xs: '100%', sm: 360 }, mb: 2 }}><InputLabel>Class</InputLabel><Select label="Class" value={selectedClassId} onChange={(event) => setSelectedClassId(event.target.value as number)}>{classes.map((classRecord) => <MenuItem key={classRecord.id} value={classRecord.id}>{classRecord.title}</MenuItem>)}</Select></FormControl>{selectedClass && <Paper elevation={0} sx={{ p: 2, mb: 2, border: 1, borderColor: 'divider' }}><Typography variant="subtitle2">Join-click reference</Typography><Typography variant="caption" color="text.secondary">A Join Class click is a reference only; select Present or Absent to record attendance.</Typography><Stack spacing={0.5} sx={{ mt: 1 }}>{students.flatMap((student) => liveLessons.filter((lesson) => student.sessionJoinClicks[lesson.id]).map((lesson) => <Typography key={`${student.id}-${lesson.id}`} variant="caption">{student.studentName} · {lesson.title}: {new Date(student.sessionJoinClicks[lesson.id]).toLocaleString()}</Typography>))}</Stack></Paper>}{selectedClass && <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'auto' }}><Box sx={{ minWidth: 700 }}><Stack direction="row" sx={{ p: 2, backgroundColor: 'background.default', fontWeight: 700 }}><Typography sx={{ flex: 1 }}>Student</Typography>{liveLessons.map((lesson) => <Typography key={lesson.id} sx={{ width: 150 }}>{lesson.title}</Typography>)}</Stack><Divider />{students.length ? students.map((student) => <Stack key={student.id} direction="row" alignItems="center" sx={{ p: 2 }}><Box sx={{ flex: 1 }}><Typography>{student.studentName}</Typography><Typography variant="caption" color="text.secondary">{student.studentEmail}</Typography></Box>{liveLessons.map((lesson) => <FormControl key={lesson.id} size="small" sx={{ width: 140 }}><Select value={student.attendance[lesson.id] ?? ''} displayEmpty inputProps={{ 'aria-label': `${student.studentName} attendance for ${lesson.title}` }} onChange={(event) => void markAttendance(student, lesson.id, event.target.value as 'Present' | 'Absent')}><MenuItem value="">Not marked</MenuItem><MenuItem value="Present">Present</MenuItem><MenuItem value="Absent">Absent</MenuItem></Select></FormControl>)}</Stack>) : <Typography color="text.secondary" sx={{ p: 3 }}>No students enrolled in this class.</Typography>}</Box></Paper>}</>}
       {view === 'profile' && <><Typography variant="h4" sx={{ mb: 0.5 }}>Tutor profile</Typography><Typography color="text.secondary" sx={{ mb: 3 }}>Keep your contact details and teaching bio up to date for students and administrators.</Typography><Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="stretch"><Paper elevation={0} sx={{ p: 3, width: { xs: '100%', md: 240 }, border: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}><Avatar sx={{ width: 88, height: 88, mb: 2, fontSize: 30, fontWeight: 700, backgroundColor: 'primary.main' }}>{profile.name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || '?'}</Avatar><Typography variant="h6">{profile.name || 'Tutor'}</Typography><Typography variant="body2" color="text.secondary">Tutor account</Typography></Paper><Paper component="form" onSubmit={saveProfile} elevation={0} sx={{ p: { xs: 2, md: 3 }, flex: 1, border: 1, borderColor: 'divider' }}><Stack spacing={2}><TextField label="Full name" value={profile.name} onChange={(event) => { setProfile({ ...profile, name: event.target.value }); setProfileSaved(false) }} required fullWidth /><TextField label="Phone number" placeholder="Add a phone number" value={profile.phone} onChange={(event) => { setProfile({ ...profile, phone: event.target.value }); setProfileSaved(false) }} fullWidth /><TextField label="Teaching bio" placeholder="Tell students about your teaching experience" value={profile.bio} onChange={(event) => { setProfile({ ...profile, bio: event.target.value }); setProfileSaved(false) }} multiline minRows={5} fullWidth /><Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}><Typography variant="caption" color="text.secondary">Your profile is visible in the tutor portal.</Typography><Button type="submit" variant="contained" disabled={saving} startIcon={<PersonOutlineIcon />}>{saving ? 'Saving...' : 'Save profile'}</Button></Stack>{profileSaved && <Typography color="success.main" role="status">Profile updated successfully.</Typography>}</Stack></Paper></Stack></>}
+      </Box>
+      <Footer />
     </Box>
-    <Footer />
   </Box>
 }
 
