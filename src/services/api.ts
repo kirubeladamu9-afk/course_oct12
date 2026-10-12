@@ -342,6 +342,12 @@ export const getAdminPracticeExams = async (): Promise<PracticeExam[]> => {
   return response.json()
 }
 
+export const updateAdminPracticeExam = async (examId: number, payload: Omit<PracticeExam, 'id'>): Promise<PracticeExam> => {
+  const response = await requestApi(`/api/admin/practice-exams/${examId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
 export const createAdminPracticeExam = async (payload: Omit<PracticeExam, 'id'>): Promise<PracticeExam> => {
   const response = await requestApi('/api/admin/practice-exams', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
   if (!response.ok) throw new Error(await getErrorMessage(response))

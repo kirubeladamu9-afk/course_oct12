@@ -2954,6 +2954,25 @@ app.post('/api/admin/practice-exams', requireAdmin, async (request, response) =>
   return response.status(201).json(exam)
 })
 
+app.patch('/api/admin/practice-exams/:id', requireAdmin, async (request, response) => {
+  const examId = parseCourseId(request.params.id)
+  const body = request.body ?? {}
+  const title = typeof body.title === 'string' ? body.title.trim() : ''
+  const subject = typeof body.subject === 'string' ? body.subject.trim() : ''
+  const grade = typeof body.grade === 'string' ? body.grade.trim() : ''
+  const price = Number(body.price)
+  const published = body.published === true
+  if (examId === null || !title || !subject || !grade || !Number.isFinite(price) || price < 0) return response.status(400).json({ message: 'Title, subject, grade, and a valid price are required.' })
+  const [exam] = await sql`
+    UPDATE practice_exams
+    SET title = ${title}, subject = ${subject}, grade = ${grade}, price = ${price}, published = ${published}
+    WHERE id = ${examId}
+    RETURNING id::INTEGER AS id, title, subject, grade, price::FLOAT AS price, published
+  `
+  if (!exam) return response.status(404).json({ message: 'Practice exam not found.' })
+  return response.json(exam)
+})
+
 app.get('/api/admin/practice-exams/:id/questions', requireAdmin, async (request, response) => {
   const examId = parseCourseId(request.params.id)
   if (examId === null) return response.status(400).json({ message: 'Invalid practice exam id.' })

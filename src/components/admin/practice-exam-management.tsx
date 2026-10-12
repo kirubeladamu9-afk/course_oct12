@@ -5,6 +5,10 @@ import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
 import FormControl from '@mui/material/FormControl'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import InputLabel from '@mui/material/InputLabel'
@@ -15,9 +19,10 @@ import Switch from '@mui/material/Switch'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import AddIcon from '@mui/icons-material/Add'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined'
 import { useEffect, useState } from 'react'
-import { createAdminPracticeExam, createAdminPracticeQuestion, getAdminPracticeExams, getAdminPracticeQuestions, updateAdminPracticeQuestion } from '@/services/api'
+import { createAdminPracticeExam, createAdminPracticeQuestion, getAdminPracticeExams, getAdminPracticeQuestions, updateAdminPracticeExam, updateAdminPracticeQuestion } from '@/services/api'
 import { toast } from '@/components/toast'
 import { type PracticeExam, type PracticeQuestion } from '@/components/practice/practice-data'
 
@@ -26,12 +31,57 @@ const practiceExamGrades = Array.from({ length: 12 }, (_, index) => String(index
 const emptyQuestion = (): Omit<PracticeQuestion, 'id' | 'exam_id'> => ({ question_text: '', topic: '', options: ['', '', '', ''], correct_answer: '', explanation: '' })
 const emptyExam = (): Omit<PracticeExam, 'id'> => ({ title: '', subject: '', grade: '', price: 0, published: false })
 
+const PracticeExamEditDialog: React.FC<{ exam: PracticeExam; onClose: () => void; onSaved: (exam: PracticeExam) => void }> = ({ exam, onClose, onSaved }) => {
+  const [draft, setDraft] = useState({ title: exam.title, subject: exam.subject, grade: exam.grade, price: exam.price, published: exam.published })
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const canSave = Boolean(draft.title.trim() && draft.subject.trim() && draft.grade && draft.price >= 0) && !isSaving
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setIsSaving(true)
+    setSaveError(null)
+    try {
+      const updated = await updateAdminPracticeExam(exam.id, draft)
+      toast.add({ title: 'Practice exam updated', description: 'The package changes were saved.', type: 'success' })
+      onSaved(updated)
+    } catch (reason) {
+      setSaveError(reason instanceof Error ? reason.message : 'Unable to update practice exam.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return <Dialog open onClose={onClose} fullWidth maxWidth="sm">
+    <Box component="form" onSubmit={save}>
+      <DialogTitle>Edit practice exam</DialogTitle>
+      <DialogContent>
+        <Stack spacing={1.5} sx={{ pt: 1 }}>
+          {saveError && <Alert severity="error">{saveError}</Alert>}
+          <TextField required size="small" label="Title" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} />
+          <Stack direction="row" spacing={1}>
+            <TextField required fullWidth size="small" label="Subject" value={draft.subject} onChange={(event) => setDraft((current) => ({ ...current, subject: event.target.value }))} />
+            <FormControl required fullWidth size="small"><InputLabel>Grade</InputLabel><Select label="Grade" value={draft.grade} onChange={(event) => setDraft((current) => ({ ...current, grade: event.target.value }))}>{practiceExamGrades.map((grade) => <MenuItem key={grade} value={grade}>Grade {grade}</MenuItem>)}</Select></FormControl>
+          </Stack>
+          <TextField required size="small" type="number" label="Price" value={draft.price} onChange={(event) => setDraft((current) => ({ ...current, price: Math.max(0, Number(event.target.value)) }))} inputProps={{ min: 0, step: 0.01 }} />
+          <FormControlLabel control={<Switch checked={draft.published} onChange={(event) => setDraft((current) => ({ ...current, published: event.target.checked }))} />} label="Published" />
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button type="submit" variant="contained" disabled={!canSave} startIcon={<SaveOutlinedIcon />}>Save changes</Button>
+      </DialogActions>
+    </Box>
+  </Dialog>
+}
+
 const PracticeExamManagement: React.FC = () => {
   const [exams, setExams] = useState<PracticeExam[]>([])
   const [questions, setQuestions] = useState<PracticeQuestion[]>([])
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null)
   const [questionDraft, setQuestionDraft] = useState(emptyQuestion)
   const [editingQuestionId, setEditingQuestionId] = useState<number | null>(null)
+  const [editingExam, setEditingExam] = useState<PracticeExam | null>(null)
   const [examDraft, setExamDraft] = useState(emptyExam)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -60,6 +110,11 @@ const PracticeExamManagement: React.FC = () => {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to save practice exam.') } finally { setIsSaving(false) }
   }
 
+  const handleExamSaved = (updated: PracticeExam) => {
+    setExams((current) => current.map((exam) => exam.id === updated.id ? updated : exam))
+    setEditingExam(null)
+  }
+
   const saveQuestion = async (event: React.FormEvent) => {
     event.preventDefault()
     if (selectedExamId === null) return
@@ -81,13 +136,16 @@ const PracticeExamManagement: React.FC = () => {
     setQuestionDraft({ question_text: question.question_text, topic: question.topic, options: question.options, correct_answer: question.correct_answer, explanation: question.explanation })
   }
 
+  const selectedExam = exams.find((exam) => exam.id === selectedExamId) ?? null
+
   return <Stack spacing={3}>
     <Box><Typography variant="h4" sx={{ mb: 0.5 }}>Practice Exams</Typography><Typography color="text.secondary">Create and maintain self-paced practice sets with topic-based feedback.</Typography></Box>
     {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
     {isLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading practice exams" /></Box> : <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '0.9fr 1.1fr' }, gap: 2.5 }}>
-      <Card elevation={0} sx={{ border: 1, borderColor: 'divider' }}><CardContent><Typography variant="h6" sx={{ mb: 2 }}>Practice exam packages</Typography><Stack spacing={1.25} sx={{ mb: 3 }}>{exams.map((exam) => <Box key={exam.id} component="button" type="button" onClick={() => setSelectedExamId(exam.id)} sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', p: 1.25, textAlign: 'left', border: 1, borderColor: selectedExamId === exam.id ? 'primary.main' : 'divider', borderRadius: 1.5, backgroundColor: 'transparent', cursor: 'pointer', font: 'inherit' }}><Box sx={{ flex: 1 }}><Typography variant="body2" sx={{ fontWeight: 700 }}>{exam.title}</Typography><Typography variant="caption" color="text.secondary">{exam.subject} · {exam.grade}</Typography></Box><Chip size="small" label={exam.published ? 'Published' : 'Draft'} color={exam.published ? 'success' : 'default'} /></Box>)}</Stack><Box component="form" onSubmit={saveExam}><Stack spacing={1.25}><Typography variant="subtitle2">New practice exam</Typography><TextField required size="small" label="Title" value={examDraft.title} onChange={(event) => setExamDraft((current) => ({ ...current, title: event.target.value }))} /><Stack direction="row" spacing={1}><TextField required fullWidth size="small" label="Subject" value={examDraft.subject} onChange={(event) => setExamDraft((current) => ({ ...current, subject: event.target.value }))} /><FormControl required fullWidth size="small"><InputLabel>Grade</InputLabel><Select label="Grade" value={examDraft.grade} onChange={(event) => setExamDraft((current) => ({ ...current, grade: event.target.value }))}>{practiceExamGrades.map((grade) => <MenuItem key={grade} value={grade}>Grade {grade}</MenuItem>)}</Select></FormControl></Stack><TextField required size="small" type="number" inputProps={{ min: 0, step: '0.01' }} label="Price" value={examDraft.price} onChange={(event) => setExamDraft((current) => ({ ...current, price: Number(event.target.value) }))} /><FormControlLabel control={<Switch checked={examDraft.published} onChange={(event) => setExamDraft((current) => ({ ...current, published: event.target.checked }))} />} label="Publish now" /><Button type="submit" variant="outlined" disabled={isSaving} startIcon={<AddIcon />}>Create exam</Button></Stack></Box></CardContent></Card>
+      <Card elevation={0} sx={{ border: 1, borderColor: 'divider' }}><CardContent><Typography variant="h6" sx={{ mb: 2 }}>Practice exam packages</Typography><Stack spacing={1.25} sx={{ mb: 1.5 }}>{exams.map((exam) => <Box key={exam.id} component="button" type="button" onClick={() => setSelectedExamId(exam.id)} sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', p: 1.25, textAlign: 'left', border: 1, borderColor: selectedExamId === exam.id ? 'primary.main' : 'divider', borderRadius: 1.5, backgroundColor: 'transparent', cursor: 'pointer', font: 'inherit' }}><Box sx={{ flex: 1 }}><Typography variant="body2" sx={{ fontWeight: 700 }}>{exam.title}</Typography><Typography variant="caption" color="text.secondary">{exam.subject} · {exam.grade}</Typography></Box><Chip size="small" label={exam.published ? 'Published' : 'Draft'} color={exam.published ? 'success' : 'default'} /></Box>)}</Stack><Button startIcon={<EditOutlinedIcon />} disabled={!selectedExam} onClick={() => setEditingExam(selectedExam)} sx={{ mb: 3 }}>Edit selected package</Button><Box component="form" onSubmit={saveExam}><Stack spacing={1.25}><Typography variant="subtitle2">New practice exam</Typography><TextField required size="small" label="Title" value={examDraft.title} onChange={(event) => setExamDraft((current) => ({ ...current, title: event.target.value }))} /><Stack direction="row" spacing={1}><TextField required fullWidth size="small" label="Subject" value={examDraft.subject} onChange={(event) => setExamDraft((current) => ({ ...current, subject: event.target.value }))} /><FormControl required fullWidth size="small"><InputLabel>Grade</InputLabel><Select label="Grade" value={examDraft.grade} onChange={(event) => setExamDraft((current) => ({ ...current, grade: event.target.value }))}>{practiceExamGrades.map((grade) => <MenuItem key={grade} value={grade}>Grade {grade}</MenuItem>)}</Select></FormControl></Stack><TextField required size="small" type="number" inputProps={{ min: 0, step: '0.01' }} label="Price" value={examDraft.price} onChange={(event) => setExamDraft((current) => ({ ...current, price: Number(event.target.value) }))} /><FormControlLabel control={<Switch checked={examDraft.published} onChange={(event) => setExamDraft((current) => ({ ...current, published: event.target.checked }))} />} label="Publish now" /><Button type="submit" variant="outlined" disabled={isSaving} startIcon={<AddIcon />}>Create exam</Button></Stack></Box></CardContent></Card>
       <Card elevation={0} sx={{ border: 1, borderColor: 'divider' }}><CardContent><Typography variant="h6" sx={{ mb: 0.5 }}>{editingQuestionId === null ? 'Add question' : 'Edit question'}</Typography><Typography color="text.secondary" variant="body2" sx={{ mb: 2 }}>A topic is required for every practice question.</Typography>{selectedExamId === null ? <Alert severity="info">Create a practice exam package before adding questions.</Alert> : <><Box component="form" onSubmit={saveQuestion}><Stack spacing={1.25}><TextField required multiline minRows={2} label="Question" value={questionDraft.question_text} onChange={(event) => setQuestionDraft((current) => ({ ...current, question_text: event.target.value }))} /><TextField required label="Topic" placeholder="e.g. Fractions" value={questionDraft.topic} onChange={(event) => setQuestionDraft((current) => ({ ...current, topic: event.target.value }))} />{questionDraft.options.map((option, index) => <TextField key={index} required label={`Option ${index + 1}`} value={option} onChange={(event) => updateOption(index, event.target.value)} />)}<TextField required label="Correct answer" value={questionDraft.correct_answer} onChange={(event) => setQuestionDraft((current) => ({ ...current, correct_answer: event.target.value }))} helperText="Must exactly match one option." /><TextField required multiline minRows={2} label="Explanation" value={questionDraft.explanation} onChange={(event) => setQuestionDraft((current) => ({ ...current, explanation: event.target.value }))} /><Stack direction="row" spacing={1}><Button type="submit" variant="contained" disabled={isSaving} startIcon={<SaveOutlinedIcon />}>{editingQuestionId === null ? 'Save question' : 'Update question'}</Button>{editingQuestionId !== null && <Button onClick={() => { setEditingQuestionId(null); setQuestionDraft(emptyQuestion()) }}>Cancel</Button>}</Stack></Stack></Box><Stack spacing={1} sx={{ mt: 3 }}>{questions.map((question) => <Box key={question.id} component="button" type="button" onClick={() => selectQuestion(question)} sx={{ width: '100%', p: 1.25, textAlign: 'left', border: 1, borderColor: editingQuestionId === question.id ? 'primary.main' : 'divider', borderRadius: 1.5, backgroundColor: 'background.default', color: 'text.primary', cursor: 'pointer', font: 'inherit' }}><Stack direction="row" justifyContent="space-between" spacing={1}><Typography variant="body2" sx={{ fontWeight: 600 }}>{question.question_text}</Typography><Chip size="small" label={question.topic} color="primary" variant="outlined" /></Stack></Box>)}</Stack></>}</CardContent></Card>
     </Box>}
+    {editingExam && <PracticeExamEditDialog key={editingExam.id} exam={editingExam} onClose={() => setEditingExam(null)} onSaved={handleExamSaved} />}
   </Stack>
 }
 
