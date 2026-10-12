@@ -45,9 +45,6 @@ import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined'
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
-import FormatBoldIcon from '@mui/icons-material/FormatBold'
-import FormatItalicIcon from '@mui/icons-material/FormatItalic'
-import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import LockResetIcon from '@mui/icons-material/LockReset'
 import BlockIcon from '@mui/icons-material/Block'
@@ -70,10 +67,9 @@ import InsertLinkOutlinedIcon from '@mui/icons-material/InsertLinkOutlined'
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined'
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline'
 import QuizOutlinedIcon from '@mui/icons-material/QuizOutlined'
-import TitleIcon from '@mui/icons-material/Title'
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined'
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined'
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { toast } from '@/components/toast'
 import { Logo } from '@/components/logo'
 import { StyledButton } from '@/components/styled-button'
@@ -90,6 +86,8 @@ import PlatformEngineLessonPicker from './platform-engine-lesson-picker'
 import { getNextLessonId, type AdminCourse, type AdminLesson, type AdminTutor, type AdminUser, type LessonType } from './admin-data'
 import type { ImportableLessonType, LessonImportPreview } from './lesson-docx'
 import InteractiveHotspotEditor from './interactive-hotspot-editor'
+import ArticleBlockEditor from './article-block-editor'
+import ArticleImportPreview from './article-import-preview'
 import { STEM_TOOL_LIBRARY, STEM_TOOL_PICKER_COMING_SOON, type StemToolDefinition } from '@/components/stem-lab/stem-tool-library'
 
 const drawerWidth = 272
@@ -189,6 +187,30 @@ const formatDuration = (seconds: number) => {
 }
 
 const getModuleDuration = (module: AdminCourse['modules'][number]) => module.lessons.reduce((total, lesson) => total + (lesson.duration ?? lesson.estimatedDuration ?? 0), 0)
+const articleImageTypes = ['image/jpeg', 'image/png', 'image/webp']
+const readArticleImage = (file: File) => new Promise<string>((resolve, reject) => {
+  if (!articleImageTypes.includes(file.type)) return reject(new Error('Choose a JPG, PNG, or WebP image.'))
+  if (file.size > 5 * 1024 * 1024) return reject(new Error('Choose an image smaller than 5 MB.'))
+  const reader = new FileReader()
+  reader.onload = () => {
+    if (typeof reader.result !== 'string') return reject(new Error('This image could not be read.'))
+    const image = new Image()
+    image.onload = () => {
+      const scale = Math.min(1, 1600 / image.naturalWidth, 1200 / image.naturalHeight)
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+      const context = canvas.getContext('2d')
+      if (!context) return reject(new Error('This image could not be processed.'))
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/webp', 0.82))
+    }
+    image.onerror = () => reject(new Error('This image file is not a valid image.'))
+    image.src = reader.result
+  }
+  reader.onerror = () => reject(new Error('This image could not be read.'))
+  reader.readAsDataURL(file)
+})
 const getLessonLabel = (lesson: AdminLesson) => lesson.type === 'video' ? (lesson.duration ? formatDuration(lesson.duration) : 'Processing') : lesson.type === 'article' ? 'Article' : lesson.type === 'interactive' ? 'Interactive' : lesson.type === 'simulation' ? 'Simulation' : lesson.type === 'quiz' ? 'Quiz' : lesson.type === 'practice' ? 'Practice' : 'Live'
 
 const LessonTypeIcon: FC<{ type: LessonType; fontSize?: 'small' | 'medium' }> = ({ type, fontSize = 'small' }) => {
@@ -347,23 +369,34 @@ export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCou
 
   const importLessonFile = async (moduleId: number, type: ImportableLessonType, file: File) => {
     setIsImportingLesson(true)
-    setLessonImportPreview({ moduleId, type, result: { title: '', articleBody: '', questions: [], issues: [], fatalError: null } })
+    setLessonImportPreview({ moduleId, type, result: { title: '', articleBody: '', articleBlocks: [], questions: [], issues: [], fatalError: null } })
     try {
       const result = file.size > 10 * 1024 * 1024
-        ? { title: '', articleBody: '', questions: [], issues: [], fatalError: 'DOCX files must be 10 MB or smaller.' }
+        ? { title: '', articleBody: '', articleBlocks: [], questions: [], issues: [], fatalError: 'DOCX files must be 10 MB or smaller.' }
         : !file.name.toLowerCase().endsWith('.docx')
-          ? { title: '', articleBody: '', questions: [], issues: [], fatalError: 'Choose a .docx file downloaded from the matching lesson template.' }
+          ? { title: '', articleBody: '', articleBlocks: [], questions: [], issues: [], fatalError: 'Choose a .docx file downloaded from the matching lesson template.' }
           : await (await import('./lesson-docx')).parseLessonDocx(type, await file.arrayBuffer())
       setLessonImportPreview({ moduleId, type, result })
     } catch {
-      setLessonImportPreview({ moduleId, type, result: { title: '', articleBody: '', questions: [], issues: [], fatalError: 'This file could not be read. Download a fresh template and try again.' } })
+      setLessonImportPreview({ moduleId, type, result: { title: '', articleBody: '', articleBlocks: [], questions: [], issues: [], fatalError: 'This file could not be read. Download a fresh template and try again.' } })
     } finally {
       setIsImportingLesson(false)
     }
   }
 
+  const uploadArticlePreviewImage = async (blockIndex: number, file: File) => {
+    try {
+      const imageUrl = await readArticleImage(file)
+      setLessonImportPreview((current) => current ? { ...current, result: { ...current.result, articleBlocks: current.result.articleBlocks.map((block, index) => index === blockIndex && block.type === 'image' ? { ...block, imageUrl } : block) } } : current)
+    } catch (error) {
+      toast.add({ title: 'Unable to add image', description: error instanceof Error ? error.message : 'This image could not be read.', type: 'error' })
+    }
+  }
+
   const applyLessonImport = () => {
     if (!lessonImportPreview || lessonImportPreview.result.fatalError) return
+    const missingImages = lessonImportPreview.result.articleBlocks.flatMap((block) => block.type === 'image' && !block.imageUrl ? [block.marker || 'Unspecified image'] : [])
+    if (missingImages.length && !window.confirm(`No image has been uploaded for ${missingImages.map((marker) => `“${marker}”`).join(', ')}. Continue with these image slots left empty?`)) return
     const { moduleId, type, result } = lessonImportPreview
     const id = getNextLessonId(course.modules)
     const importedLesson: AdminLesson = {
@@ -372,7 +405,7 @@ export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCou
       type,
       duration: null,
       resources: [],
-      ...(type === 'article' ? { articleBody: result.articleBody } : {}),
+      ...(type === 'article' ? { articleBody: result.articleBody, articleBlocks: result.articleBlocks } : {}),
       ...(type === 'quiz' ? { passThreshold: 70, quizQuestions: result.questions.map((question, index) => ({ id: index + 1, question: question.question, topic: question.topic, options: question.options, correctOption: question.correctOption, explanation: question.explanation })) } : {}),
       ...(type === 'practice' ? { practiceQuestions: result.questions.map((question, index) => ({ id: index + 1, question: question.question, topic: question.topic, options: question.options, correctAnswer: question.options[question.correctOption], explanation: question.explanation })) } : {}),
     }
@@ -537,7 +570,7 @@ export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCou
           </Stack>
       </CourseEditorSection>
       {lessonPanel && <LessonDetailsPanel lessonPanel={lessonPanel} updateLessonDraft={updateLessonDraft} onClose={() => setLessonPanel(null)} onSave={saveLesson} onVideoFile={handleVideoFile} onAddResources={addResources} videoUploadProgress={videoUploadProgress} disabled={cannotSaveLesson} classSchedule={classSchedule} classMeetingLink={classMeetingLink} availableLiveSessionDates={liveLessonSessionDates} />}
-      <Dialog open={Boolean(lessonImportPreview)} onClose={() => setLessonImportPreview(null)} fullWidth maxWidth="md"><DialogTitle>Review imported {lessonImportPreview?.type} lesson</DialogTitle><DialogContent dividers><Stack spacing={1.5}>{isImportingLesson ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress aria-label="Reading lesson DOCX" /></Box> : lessonImportPreview && <><Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{lessonImportPreview.result.title || 'Lesson title unavailable'}</Typography>{lessonImportPreview.result.fatalError && <Alert severity="error">{lessonImportPreview.result.fatalError}</Alert>}{lessonImportPreview.result.issues.map((issue, index) => <Alert key={`${index}-${issue}`} severity="warning">{issue}</Alert>)}{lessonImportPreview.type === 'article' && lessonImportPreview.result.articleBody && <Paper variant="outlined" sx={{ p: 1.5, maxHeight: 240, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{lessonImportPreview.result.articleBody}</Paper>}{lessonImportPreview.result.questions.map((question, index) => <Paper key={`${index}-${question.question}`} variant="outlined" sx={{ p: 1.5 }}><Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>Question {question.number}: {question.question}</Typography><Typography variant="caption" color="text.secondary">Topic: {question.topic}</Typography><Stack spacing={0.25} sx={{ mt: 0.75 }}>{question.options.map((option, optionIndex) => <Typography key={`${optionIndex}-${option}`} variant="body2" color={optionIndex === question.correctOption ? 'success.main' : 'text.primary'}>{String.fromCharCode(65 + optionIndex)}. {option}{optionIndex === question.correctOption ? ' — Correct answer' : ''}</Typography>)}</Stack>{question.explanation && <Typography variant="body2" sx={{ mt: 0.75 }}>Explanation: {question.explanation}</Typography>}</Paper>)}{!lessonImportPreview.result.fatalError && lessonImportPreview.result.issues.length === 0 && <Alert severity="info">This lesson will be appended to the current module. It remains a draft until you save the course or class.</Alert>}{!lessonImportPreview.result.fatalError && lessonImportPreview.result.issues.length > 0 && <Alert severity="info">{lessonImportPreview.result.questions.length} valid question(s) will be imported; the flagged entries will be skipped.</Alert>}</>}</Stack></DialogContent><DialogActions><MuiButton onClick={() => setLessonImportPreview(null)}>Cancel</MuiButton><MuiButton variant="contained" onClick={applyLessonImport} disabled={isImportingLesson || !lessonImportPreview || Boolean(lessonImportPreview.result.fatalError) || (lessonImportPreview.type !== 'article' && !lessonImportPreview.result.questions.length)}>Add to current module</MuiButton></DialogActions></Dialog>
+      <Dialog open={Boolean(lessonImportPreview)} onClose={() => setLessonImportPreview(null)} fullWidth maxWidth="md"><DialogTitle>Review imported {lessonImportPreview?.type} lesson</DialogTitle><DialogContent dividers><Stack spacing={1.5}>{isImportingLesson ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress aria-label="Reading lesson DOCX" /></Box> : lessonImportPreview && <><Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{lessonImportPreview.result.title || 'Lesson title unavailable'}</Typography>{lessonImportPreview.result.fatalError && <Alert severity="error">{lessonImportPreview.result.fatalError}</Alert>}{lessonImportPreview.result.issues.map((issue, index) => <Alert key={`${index}-${issue}`} severity="warning">{issue}</Alert>)}{lessonImportPreview.type === 'article' && <ArticleImportPreview blocks={lessonImportPreview.result.articleBlocks} onUpload={(index, file) => void uploadArticlePreviewImage(index, file)} onCaptionChange={(index, caption) => setLessonImportPreview((current) => current ? { ...current, result: { ...current.result, articleBlocks: current.result.articleBlocks.map((block, blockIndex) => blockIndex === index && block.type === 'image' ? { ...block, caption } : block) } } : current)} />}{lessonImportPreview.result.questions.map((question, index) => <Paper key={`${index}-${question.question}`} variant="outlined" sx={{ p: 1.5 }}><Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>Question {question.number}: {question.question}</Typography><Typography variant="caption" color="text.secondary">Topic: {question.topic}</Typography><Stack spacing={0.25} sx={{ mt: 0.75 }}>{question.options.map((option, optionIndex) => <Typography key={`${optionIndex}-${option}`} variant="body2" color={optionIndex === question.correctOption ? 'success.main' : 'text.primary'}>{String.fromCharCode(65 + optionIndex)}. {option}{optionIndex === question.correctOption ? ' — Correct answer' : ''}</Typography>)}</Stack>{question.explanation && <Typography variant="body2" sx={{ mt: 0.75 }}>Explanation: {question.explanation}</Typography>}</Paper>)}{!lessonImportPreview.result.fatalError && lessonImportPreview.result.issues.length === 0 && <Alert severity="info">This lesson will be appended to the current module. It remains a draft until you save the course or class.</Alert>}{!lessonImportPreview.result.fatalError && lessonImportPreview.result.issues.length > 0 && <Alert severity="info">{lessonImportPreview.result.questions.length} valid question(s) will be imported; the flagged entries will be skipped.</Alert>}</>}</Stack></DialogContent><DialogActions><MuiButton onClick={() => setLessonImportPreview(null)}>Cancel</MuiButton><MuiButton variant="contained" onClick={applyLessonImport} disabled={isImportingLesson || !lessonImportPreview || Boolean(lessonImportPreview.result.fatalError) || (lessonImportPreview.type !== 'article' && !lessonImportPreview.result.questions.length)}>Add to current module</MuiButton></DialogActions></Dialog>
     </Paper>
   )
 }
@@ -556,13 +589,8 @@ const ReadyMadeSimulationToolPicker: FC<{ lesson: AdminLesson; updateLessonDraft
 
 const LessonDetailsPanel: FC<{ lessonPanel: LessonPanelState; updateLessonDraft: (lesson: AdminLesson) => void; onClose: () => void; onSave: () => void; onVideoFile: (file: File) => void; onAddResources: (files: FileList | null) => void; videoUploadProgress: number; disabled: boolean; classSchedule?: ClassLessonSchedule; classMeetingLink?: string; availableLiveSessionDates: string[] }> = ({ lessonPanel, updateLessonDraft, onClose, onSave, onVideoFile, onAddResources, videoUploadProgress, disabled, classSchedule, classMeetingLink = '', availableLiveSessionDates }) => {
   const { lesson } = lessonPanel
-  const articleBodyRef = useRef<HTMLDivElement>(null)
   const questionId = Math.max(0, ...(lesson.quizQuestions ?? []).map((question) => question.id)) + 1
   const removeResource = (resourceId: number) => updateLessonDraft({ ...lesson, resources: lesson.resources.filter((resource) => resource.id !== resourceId) })
-
-  useEffect(() => {
-    if (lesson.type === 'article' && articleBodyRef.current) articleBodyRef.current.innerText = lesson.articleBody ?? ''
-  }, [lesson.id, lesson.type])
   const isVideoProcessing = lesson.type === 'video' && videoUploadProgress > 0 && videoUploadProgress < 100
   const liveLessonSettings = { meetingUrl: classMeetingLink, getScheduledAt: (_lesson: AdminLesson, _isNew: boolean) => lesson.scheduledAt ?? '' }
   return <Paper elevation={0} sx={{ mt: 2, p: 2.5, border: 1, borderColor: 'primary.main', backgroundColor: 'background.paper' }}>
@@ -572,7 +600,7 @@ const LessonDetailsPanel: FC<{ lessonPanel: LessonPanelState; updateLessonDraft:
       {lesson.type === 'article' && <Box><Typography variant="body2" sx={{ mb: 0.75 }}>Downloadable resources <Typography component="span" variant="caption" color="text.secondary">(optional)</Typography></Typography><Box component="label" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, minHeight: 72, p: 1.5, border: 1, borderColor: 'divider', borderStyle: 'dashed', borderRadius: 1, color: 'text.secondary', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', color: 'primary.main' } }}><UploadFileOutlinedIcon color="primary" fontSize="small" /><Typography variant="body2">Add files</Typography><input hidden type="file" multiple onChange={(event) => { onAddResources(event.target.files); event.target.value = '' }} aria-label="Add downloadable resources" /></Box>{lesson.resources.length > 0 && <Stack spacing={0.5} sx={{ mt: 1 }}>{lesson.resources.map((resource) => <Box key={resource.id} sx={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', alignItems: 'center', gap: 1, p: 1, border: 1, borderColor: 'divider', borderRadius: 1, backgroundColor: 'background.default' }}><InsertDriveFileOutlinedIcon color="primary" fontSize="small" /><Typography variant="body2" color="text.secondary">Downloadable resource</Typography><IconButton size="small" color="error" onClick={() => removeResource(resource.id)} aria-label="Remove downloadable resource"><DeleteOutlineIcon fontSize="small" /></IconButton></Box>)}</Stack>}</Box>}
       {lesson.type === 'interactive' && <InteractiveHotspotEditor lesson={lesson} onChange={updateLessonDraft} />}
       {lesson.type === 'simulation' && <PlatformEngineLessonPicker lesson={lesson} updateLessonDraft={updateLessonDraft} onSave={onSave} />}
-      {lesson.type === 'article' && <Stack spacing={1}><Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Tooltip title="Bold"><IconButton size="small" onClick={() => document.execCommand('bold')} aria-label="Bold text"><FormatBoldIcon fontSize="small" /></IconButton></Tooltip><Tooltip title="Italic"><IconButton size="small" onClick={() => document.execCommand('italic')} aria-label="Italic text"><FormatItalicIcon fontSize="small" /></IconButton></Tooltip><Tooltip title="Bulleted list"><IconButton size="small" onClick={() => document.execCommand('insertUnorderedList')} aria-label="Bulleted list"><FormatListBulletedIcon fontSize="small" /></IconButton></Tooltip><Tooltip title="Heading"><IconButton size="small" onClick={() => document.execCommand('formatBlock', false, 'h3')} aria-label="Heading"><TitleIcon fontSize="small" /></IconButton></Tooltip></Box><Box ref={articleBodyRef} contentEditable suppressContentEditableWarning onInput={(event) => updateLessonDraft({ ...lesson, articleBody: event.currentTarget.innerText })} sx={{ minHeight: 180, p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1, outline: 'none', '&:focus': { borderColor: 'primary.main' } }} /><Typography color="text.secondary" variant="caption">Estimated read time: {Math.max(1, Math.ceil((lesson.articleBody?.trim().split(/\s+/).filter(Boolean).length ?? 0) / 200))} min</Typography></Stack>}
+      {lesson.type === 'article' && <><ArticleBlockEditor lesson={lesson} onChange={updateLessonDraft} readImage={readArticleImage} /><Typography color="text.secondary" variant="caption">Estimated read time: {Math.max(1, Math.ceil((lesson.articleBody?.trim().split(/\s+/).filter(Boolean).length ?? 0) / 200))} min</Typography></>}
       {lesson.type === 'quiz' && <Stack spacing={1.5}>{(lesson.quizQuestions ?? []).map((question, questionIndex) => <Paper key={question.id} elevation={0} sx={{ p: 1.5, border: 1, borderColor: 'divider' }}><Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}><Typography variant="body2" sx={{ fontWeight: 600 }}>Question {questionIndex + 1}</Typography><IconButton size="small" color="error" onClick={() => updateLessonDraft({ ...lesson, quizQuestions: lesson.quizQuestions?.filter((currentQuestion) => currentQuestion.id !== question.id) })} aria-label={`Delete question ${questionIndex + 1}`}><DeleteOutlineIcon fontSize="small" /></IconButton></Box><TextField fullWidth size="small" label="Question" value={question.question} onChange={(event) => updateLessonDraft({ ...lesson, quizQuestions: lesson.quizQuestions?.map((currentQuestion) => currentQuestion.id === question.id ? { ...currentQuestion, question: event.target.value } : currentQuestion) })} sx={{ mb: 1 }} /><TextField fullWidth required size="small" label="Topic" placeholder="e.g. Fractions" value={question.topic} onChange={(event) => updateLessonDraft({ ...lesson, quizQuestions: lesson.quizQuestions?.map((currentQuestion) => currentQuestion.id === question.id ? { ...currentQuestion, topic: event.target.value } : currentQuestion) })} sx={{ mb: 1 }} /><Stack spacing={0.75}>{question.options.map((option, optionIndex) => <Box key={`${question.id}-${optionIndex}`} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Box component="input" type="radio" name={`correct-option-${question.id}`} checked={question.correctOption === optionIndex} onChange={() => updateLessonDraft({ ...lesson, quizQuestions: lesson.quizQuestions?.map((currentQuestion) => currentQuestion.id === question.id ? { ...currentQuestion, correctOption: optionIndex } : currentQuestion) })} aria-label={`Mark option ${optionIndex + 1} correct`} /><TextField fullWidth size="small" placeholder={`Option ${optionIndex + 1}`} value={option} onChange={(event) => updateLessonDraft({ ...lesson, quizQuestions: lesson.quizQuestions?.map((currentQuestion) => currentQuestion.id === question.id ? { ...currentQuestion, options: currentQuestion.options.map((currentOption, currentOptionIndex) => currentOptionIndex === optionIndex ? event.target.value : currentOption) } : currentQuestion) })} /></Box>)}</Stack></Paper>)}<Button label="Add question" size="small" variant="outlined" onClick={() => updateLessonDraft({ ...lesson, quizQuestions: [...(lesson.quizQuestions ?? []), { id: questionId, question: '', topic: '', options: ['', '', ''], correctOption: 0 }] })} /><TextField label="Pass threshold" type="number" size="small" inputProps={{ min: 0, max: 100 }} value={lesson.passThreshold ?? 70} onChange={(event) => updateLessonDraft({ ...lesson, passThreshold: Number(event.target.value) })} sx={{ maxWidth: 220 }} /></Stack>}
       {lesson.type === 'practice' && <PracticeQuestionsEditor lesson={lesson} updateLessonDraft={updateLessonDraft} />}
       {lesson.type === 'live' && classSchedule && <Stack spacing={1.5}><FormControl fullWidth required disabled={availableLiveSessionDates.length === 0}><InputLabel>Session date</InputLabel><Select label="Session date" value={lesson.scheduledAt?.slice(0, 10) ?? ''} onChange={(event) => updateLessonDraft({ ...lesson, ...getClassLiveLessonSettings(classSchedule, classMeetingLink, event.target.value) })}>{availableLiveSessionDates.map((sessionDate) => <MenuItem key={sessionDate} value={sessionDate}>{new Date(`${sessionDate}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</MenuItem>)}</Select></FormControl>{availableLiveSessionDates.length === 0 && <Typography color="error" variant="caption">All valid class session dates are already assigned to live lessons.</Typography>}<TextField fullWidth label="Session time" value={classSchedule.time} InputLabelProps={{ shrink: true }} InputProps={{ readOnly: true }} /><TextField fullWidth label="Meeting link" value={classMeetingLink} InputLabelProps={{ shrink: true }} InputProps={{ readOnly: true }} /><TextField fullWidth label="Duration (minutes)" value={classSchedule.duration} InputLabelProps={{ shrink: true }} InputProps={{ readOnly: true }} /><Typography color="text.secondary" variant="caption">Time, meeting link, and duration come from the class schedule.</Typography></Stack>}{lesson.type === 'live' && !classSchedule && <Stack spacing={1.5}><Typography variant="body2"><strong>Meeting link:</strong> {lesson.meetingUrl || 'Not set'}</Typography><Typography variant="body2"><strong>Session date and time:</strong> {lesson.scheduledAt ? new Date(lesson.scheduledAt).toLocaleString() : 'Not scheduled'}</Typography><Typography variant="body2"><strong>Duration:</strong> {lesson.sessionDuration ?? 60} minutes</Typography></Stack>}{false && lesson.type === 'live' && (liveLessonSettings ? <Stack spacing={1.5}><Box><Typography variant="body2" color="text.secondary">Meeting Link</Typography><Typography variant="body2">{liveLessonSettings.meetingUrl || 'No class meeting link set'}</Typography></Box><Box><Typography variant="body2" color="text.secondary">Scheduled date and time</Typography><Typography variant="body2">{lesson.dateOverridden ? lesson.scheduledAt || 'Choose a date and time' : liveLessonSettings.getScheduledAt(lesson, lessonPanel.isNew) || 'Set class days, time, and start date to calculate'}</Typography></Box><FormControlLabel control={<Switch checked={lesson.dateOverridden === true} onChange={(event) => updateLessonDraft({ ...lesson, dateOverridden: event.target.checked, scheduledAt: event.target.checked ? (lesson.scheduledAt || liveLessonSettings.getScheduledAt(lesson, lessonPanel.isNew)) : liveLessonSettings.getScheduledAt(lesson, lessonPanel.isNew) })} inputProps={{ 'aria-label': 'Override date' }} />} label="Override date" />{lesson.dateOverridden && <TextField fullWidth label="Scheduled date and time" type="datetime-local" InputLabelProps={{ shrink: true }} value={lesson.scheduledAt ?? ''} onChange={(event) => updateLessonDraft({ ...lesson, scheduledAt: event.target.value })} />}<TextField label="Duration (minutes)" type="number" inputProps={{ min: 1 }} value={Math.round((lesson.estimatedDuration ?? 3600) / 60)} onChange={(event) => updateLessonDraft({ ...lesson, estimatedDuration: Number(event.target.value) * 60 })} /></Stack> : <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}><TextField fullWidth label="Meeting link" type="url" placeholder="https://" value={lesson.meetingUrl ?? ''} onChange={(event) => updateLessonDraft({ ...lesson, meetingUrl: event.target.value })} /><TextField fullWidth label="Scheduled date and time" type="datetime-local" InputLabelProps={{ shrink: true }} value={lesson.scheduledAt ?? ''} onChange={(event) => updateLessonDraft({ ...lesson, scheduledAt: event.target.value })} /><TextField label="Duration (minutes)" type="number" inputProps={{ min: 1 }} value={Math.round((lesson.estimatedDuration ?? 3600) / 60)} onChange={(event) => updateLessonDraft({ ...lesson, estimatedDuration: Number(event.target.value) * 60 })} /></Stack>)}

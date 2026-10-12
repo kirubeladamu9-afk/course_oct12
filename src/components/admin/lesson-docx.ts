@@ -1,5 +1,6 @@
 import { Document, HeadingLevel, Packer, Paragraph } from 'docx'
 import JSZip from 'jszip'
+import type { ArticleContentBlock } from './admin-data'
 
 export type ImportableLessonType = 'article' | 'quiz' | 'practice'
 
@@ -15,6 +16,7 @@ export interface ImportedQuestion {
 export interface LessonImportPreview {
   title: string
   articleBody: string
+  articleBlocks: ArticleContentBlock[]
   questions: ImportedQuestion[]
   issues: string[]
   fatalError: string | null
@@ -59,12 +61,13 @@ const templateParagraphs = (type: ImportableLessonType) => type === 'article'
   ? [
       paragraph('Article template instructions'),
       paragraph('Use exactly one Heading 1 for the lesson title. Use Heading 2 for optional subsection titles, then write plain text paragraphs beneath them.'),
-      paragraph('Formatting and images are not imported. Replace the bracketed example text with your lesson content.'),
+      paragraph('Replace the bracketed example text with your lesson content. To request an inline image, add a standalone line such as [IMAGE: a close view of Jupiter]. The marker will appear as an image slot during import.'),
       paragraph('LESSON TYPE: ARTICLE'),
       paragraph('[Enter lesson title]', HeadingLevel.HEADING_1),
       paragraph('[Enter article content here]'),
       paragraph('[Enter subsection title]', HeadingLevel.HEADING_2),
       paragraph('[Enter subsection content here]'),
+      paragraph('[IMAGE: add a short description of the image needed here]'),
     ]
   : questionTemplateParagraphs(type)
 
@@ -82,7 +85,7 @@ export const downloadLessonTemplate = async (type: ImportableLessonType) => {
 }
 
 const isPlaceholder = (value: string) => /^\[.*\]$/.test(value.trim())
-const preview = (fatalError: string, title = ''): LessonImportPreview => ({ title, articleBody: '', questions: [], issues: [], fatalError })
+const preview = (fatalError: string, title = ''): LessonImportPreview => ({ title, articleBody: '', articleBlocks: [], questions: [], issues: [], fatalError })
 const parseArticle = (paragraphs: LessonParagraph[]): LessonImportPreview => {
   const instructionMarker = paragraphs.find((paragraph) => /^(Article|Quiz|Practice) template instructions$/i.test(paragraph.text))?.text
   if (instructionMarker && !/^Article/i.test(instructionMarker)) return preview(`This file is a ${instructionMarker.split(' ')[0]} template, not an Article template.`)
@@ -101,7 +104,7 @@ const parseArticle = (paragraphs: LessonParagraph[]): LessonImportPreview => {
   const instructions = [
     'Article template instructions',
     'Use exactly one Heading 1 for the lesson title. Use Heading 2 for optional subsection titles, then write plain text paragraphs beneath them.',
-    'Formatting and images are not imported. Replace the bracketed example text with your lesson content.',
+    'Replace the bracketed example text with your lesson content. To request an inline image, add a standalone line such as [IMAGE: a close view of Jupiter]. The marker will appear as an image slot during import.',
     'LESSON TYPE: ARTICLE',
   ]
   const leadingContent = paragraphs.slice(0, titleIndex).filter(({ text }) => text && !instructions.includes(text))
@@ -111,8 +114,14 @@ const parseArticle = (paragraphs: LessonParagraph[]): LessonImportPreview => {
   if (!title || isPlaceholder(title)) return preview('Enter a non-empty lesson title in the Heading 1 line.')
   const unexpectedHeading = paragraphs.slice(titleIndex + 1).find(({ heading }) => heading !== null && heading > 2)
   if (unexpectedHeading) return preview('The Article template contains an unsupported heading level. Use Heading 2 for subsections.')
-  const content = paragraphs.slice(titleIndex + 1).filter(({ text }) => text && !isPlaceholder(text)).map(({ text }) => text)
-  return { title, articleBody: content.join('\n'), questions: [], issues: [], fatalError: null }
+  const content = paragraphs.slice(titleIndex + 1).filter(({ text }) => text && !/^\[Enter (?:lesson title|article content here|subsection title|subsection content here)\]$/i.test(text.trim()) && !/^\[IMAGE:\s*add a short description of the image needed here\]$/i.test(text.trim()))
+  const articleBlocks: ArticleContentBlock[] = content.map(({ text, heading }) => {
+    const imageMarker = text.match(/^\[IMAGE:\s*(.*?)\]$/i)
+    if (imageMarker) return { type: 'image', marker: imageMarker[1].trim(), caption: '' }
+    if (heading === 2) return { type: 'heading', text }
+    return { type: 'text', text }
+  })
+  return { title, articleBody: articleBlocks.filter((block) => block.type !== 'image').map((block) => block.text).join('\n'), articleBlocks, questions: [], issues: [], fatalError: null }
 }
 
 const parseQuestionBlock = (heading: string, paragraphs: LessonParagraph[], issues: string[]) => {
@@ -207,7 +216,7 @@ const parseQuizOrPractice = (paragraphs: LessonParagraph[], type: 'quiz' | 'prac
     const parsed = parseQuestionBlock(heading.text, paragraphs.slice(start, end), issues)
     return parsed ? [parsed] : []
   })
-  return { title, articleBody: '', questions, issues, fatalError: questions.length ? null : `No valid questions were found. ${issues.join(' ')}` }
+  return { title, articleBody: '', articleBlocks: [], questions, issues, fatalError: questions.length ? null : `No valid questions were found. ${issues.join(' ')}` }
 }
 
 export const parseLessonParagraphs = (type: ImportableLessonType, paragraphs: LessonParagraph[]): LessonImportPreview => type === 'article' ? parseArticle(paragraphs) : parseQuizOrPractice(paragraphs, type)

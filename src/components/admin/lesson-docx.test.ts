@@ -32,6 +32,26 @@ describe('parseLessonParagraphs', () => {
     expect(result).toMatchObject({ title: 'Light and Exposure', articleBody: 'Exposure controls brightness.\nAperture\nA wider aperture lets in more light.', fatalError: null })
   })
 
+  it('preserves inline image marker positions and descriptions in an Article import', () => {
+    const result = parseLessonParagraphs('article', [
+      paragraph('Article template instructions'),
+      paragraph('LESSON TYPE: ARTICLE'),
+      paragraph('Light and Exposure', 1),
+      paragraph('Exposure controls brightness.'),
+      paragraph('[IMAGE: a close-up of an aperture]'),
+      paragraph('Aperture', 2),
+      paragraph('A wider aperture lets in more light.'),
+    ])
+
+    expect(result.articleBlocks).toEqual([
+      { type: 'text', text: 'Exposure controls brightness.' },
+      { type: 'image', marker: 'a close-up of an aperture', caption: '' },
+      { type: 'heading', text: 'Aperture' },
+      { type: 'text', text: 'A wider aperture lets in more light.' },
+    ])
+    expect(result.fatalError).toBeNull()
+  })
+
   it('keeps valid questions and identifies malformed questions by source number', () => {
     const result = parseLessonParagraphs('quiz', [
       ...questionTemplate('QUIZ'),

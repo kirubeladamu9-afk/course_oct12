@@ -1,6 +1,6 @@
 import { type AdminCourse, type AdminModule, type AdminTutor, type AdminUser } from '@/components/admin/admin-data'
 import { type Course } from '@/interfaces/course'
-import { type SimulationConfig } from '@/components/admin/admin-data'
+import { type ArticleContentBlock, type SimulationConfig } from '@/components/admin/admin-data'
 import { type PracticeExam, type PracticeExamWithQuestions, type PracticePurchase, type PracticeQuestion } from '@/components/practice/practice-data'
 
 export interface AuthUser {
@@ -64,6 +64,8 @@ interface EnrollmentLesson {
   thumbnailUrl?: string
   estimatedDuration?: number
   articleBody?: string
+  articleBlocks?: ArticleContentBlock[]
+  articleHeaderImageUrl?: string
   baseImageUrl?: string
   interactiveHotspots?: Array<{ id: number; left: string; top: string; label: string; explanation: string }>
   simulation?: SimulationConfig

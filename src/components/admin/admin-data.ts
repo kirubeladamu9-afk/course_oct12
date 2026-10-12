@@ -57,6 +57,11 @@ export interface PracticeQuestion {
   explanation: string
 }
 
+export type ArticleContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'heading'; text: string }
+  | { type: 'image'; marker?: string; imageUrl?: string; caption: string }
+
 export interface AdminLesson {
   id: number
   title: string
@@ -66,6 +71,8 @@ export interface AdminLesson {
   thumbnailUrl?: string
   resources: LessonResource[]
   articleBody?: string
+  articleBlocks?: ArticleContentBlock[]
+  articleHeaderImageUrl?: string
   baseImageUrl?: string
   interactiveHotspots?: InteractiveHotspot[]
   simulation?: SimulationConfig
