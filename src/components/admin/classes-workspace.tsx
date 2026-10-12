@@ -10,6 +10,7 @@ import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import FormControl from '@mui/material/FormControl'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import FormHelperText from '@mui/material/FormHelperText'
 import IconButton from '@mui/material/IconButton'
 import InputLabel from '@mui/material/InputLabel'
 import MenuItem from '@mui/material/MenuItem'
@@ -63,6 +64,7 @@ interface AdminClass {
   price: number
   status: ClassStatus
   published: boolean
+  grade_level: number | null
 }
 
 interface ClassEnrollment {
@@ -97,6 +99,7 @@ interface ClassFormValue {
   modules: AdminModule[]
   price: number
   published: boolean
+  grade_level: number | null
 }
 
 interface PendingAssignmentValue {
@@ -249,6 +252,7 @@ const emptyClassForm = (): ClassFormValue => ({
   modules: [],
   price: 0,
   published: true,
+  grade_level: null,
 })
 
 const ClassCurriculumEditor: FC<{ modules: AdminModule[]; onChange: (modules: AdminModule[]) => void }> = ({ modules, onChange }) => {
@@ -256,6 +260,10 @@ const ClassCurriculumEditor: FC<{ modules: AdminModule[]; onChange: (modules: Ad
   const addLesson = (moduleId: number, type: LessonType) => onChange(modules.map((module) => module.id === moduleId ? { ...module, lessons: [...module.lessons, { id: getNextLessonId(modules), title: `New ${type} lesson`, type, duration: null, resources: [] }] } : module))
   return <Stack spacing={1.5}><Typography variant="body2" color="text.secondary">Build curriculum private to this class. It is not connected to the public Courses catalog.</Typography>{modules.map((module) => <Paper key={module.id} variant="outlined" sx={{ p: 1.5 }}><TextField fullWidth size="small" label="Module title" value={module.title} onChange={(event) => onChange(modules.map((item) => item.id === module.id ? { ...item, title: event.target.value } : item))} /><Stack spacing={0.5} sx={{ mt: 1 }}>{module.lessons.map((lesson) => <Typography key={lesson.id} variant="body2">{lesson.title} · {lesson.type}</Typography>)}<Stack direction="row" spacing={0.5} flexWrap="wrap">{(['video', 'article', 'interactive', 'quiz', 'practice', 'live'] as LessonType[]).map((type) => <Button key={type} size="small" onClick={() => addLesson(module.id, type)}>Add {type}</Button>)}</Stack></Stack></Paper>)}<Button startIcon={<AddIcon />} onClick={addModule} sx={{ alignSelf: 'flex-start' }}>Add module</Button></Stack>
 }
+
+const allGradeLevels = Array.from({ length: 12 }, (_, index) => index + 1)
+
+const getGradeLevelOptions = (programId: ProgramId, isEditing: boolean) => programId === 'ministry-exam-prep' && !isEditing ? [6, 8, 12] : allGradeLevels
 
 const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boolean; onClose: () => void; onSave: (values: ClassFormValue) => void }> = ({ classRecord, open, onClose, onSave }) => {
   const [values, setValues] = useState<ClassFormValue>(emptyClassForm)
@@ -268,7 +276,7 @@ const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boolean; onC
     }
     if (initializedRef.current) return
     initializedRef.current = true
-    setValues(classRecord ? { title: classRecord.title, program_id: classRecord.program_id, tutor_id: classRecord.tutor_id, capacity: classRecord.capacity, schedule: normalizeSchedule(classRecord.schedule), meeting_link: classRecord.meeting_link, modules: migrateLiveLessonSettings(normalizeModules(classRecord.modules), classRecord.meeting_link), price: classRecord.price, published: classRecord.published } : emptyClassForm())
+    setValues(classRecord ? { title: classRecord.title, program_id: classRecord.program_id, tutor_id: classRecord.tutor_id, capacity: classRecord.capacity, schedule: normalizeSchedule(classRecord.schedule), meeting_link: classRecord.meeting_link, modules: migrateLiveLessonSettings(normalizeModules(classRecord.modules), classRecord.meeting_link), price: classRecord.price, published: classRecord.published, grade_level: classRecord.grade_level } : emptyClassForm())
   }, [classRecord, open])
 
   useEffect(() => {
@@ -277,7 +285,7 @@ const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boolean; onC
 
   const allowedPastStartDate = classRecord ? normalizeSchedule(classRecord.schedule).startDate : undefined
   const classDateValidation = getDateValidation(values.schedule, allowedPastStartDate)
-  const canSave = Boolean(values.title.trim() && values.tutor_id >= 1 && values.capacity >= 1 && values.schedule.startDate && values.schedule.endDate && values.schedule.days.length && values.schedule.time && values.meeting_link && !classDateValidation.startInPast && !classDateValidation.endBeforeStart)
+  const canSave = Boolean((classRecord || values.grade_level !== null) && values.title.trim() && values.tutor_id >= 1 && values.capacity >= 1 && values.schedule.startDate && values.schedule.endDate && values.schedule.days.length && values.schedule.time && values.meeting_link && !classDateValidation.startInPast && !classDateValidation.endBeforeStart)
   const selectablePrograms = classRecord ? Object.keys(programLabels) as ProgramId[] : manageablePrograms
 
   return (
@@ -287,7 +295,7 @@ const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boolean; onC
         <Stack spacing={2.5}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField required fullWidth label="Title" value={values.title} onChange={(event) => setValues({ ...values, title: event.target.value })} />
-            <FormControl fullWidth required><InputLabel>Program</InputLabel><Select label="Program" value={values.program_id} onChange={(event) => setValues({ ...values, program_id: event.target.value as ProgramId })}>{selectablePrograms.map((program) => <MenuItem key={program} value={program}>{programLabels[program]}</MenuItem>)}</Select></FormControl>
+            <FormControl fullWidth required><InputLabel>Program</InputLabel><Select label="Program" value={values.program_id} onChange={(event) => setValues({ ...values, program_id: event.target.value as ProgramId, grade_level: null })}>{selectablePrograms.map((program) => <MenuItem key={program} value={program}>{programLabels[program]}</MenuItem>)}</Select></FormControl><FormControl fullWidth required error={!classRecord && values.grade_level === null}><InputLabel>Grade Level</InputLabel><Select label="Grade Level" value={values.grade_level ?? ''} onChange={(event) => setValues({ ...values, grade_level: Number(event.target.value) })}>{getGradeLevelOptions(values.program_id, Boolean(classRecord)).map((grade) => <MenuItem key={grade} value={grade}>Grade {grade}</MenuItem>)}</Select>{!classRecord && values.grade_level === null && <FormHelperText>Select a grade level for this program</FormHelperText>}</FormControl>
           </Stack>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField required fullWidth label="Capacity" type="number" value={values.capacity} onChange={(event) => setValues({ ...values, capacity: Math.max(1, Number(event.target.value)) })} inputProps={{ min: 1 }} />

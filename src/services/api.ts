@@ -711,6 +711,7 @@ export interface AdminClass {
   price: number
   status: AdminClassStatus
   published: boolean
+  grade_level: number | null
 }
 
 export interface ClassLeaderboardEntry {
@@ -796,7 +797,7 @@ export const deleteAdminClass = async (classRecord: AdminClass) => {
   await hideClass()
 }
 
-export const assignAdminClass = (enrollmentId: number, values: Omit<AdminClass, 'id' | 'status' | 'program_id' | 'modules' | 'published'>) => requestClasses('/api/admin/classes/assign', {
+export const assignAdminClass = (enrollmentId: number, values: Omit<AdminClass, 'id' | 'status' | 'program_id' | 'modules' | 'published' | 'grade_level'>) => requestClasses('/api/admin/classes/assign', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ enrollmentId, ...values }),

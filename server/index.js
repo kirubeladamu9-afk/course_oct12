@@ -342,6 +342,7 @@ const initializeDatabase = async () => {
   `
   await ensureColumns('classes', {
     modules: "JSONB NOT NULL DEFAULT '[]'::jsonb",
+    grade_level: 'SMALLINT CHECK (grade_level BETWEEN 1 AND 12)',
   })
   await ensureColumns('enrollments', {
     class_id: 'BIGINT REFERENCES classes(id) ON DELETE SET NULL',
@@ -3421,9 +3422,10 @@ const parseClassPayload = (body) => {
   const modules = Array.isArray(body.modules) ? body.modules : []
   const price = Number(body.price)
   const published = body.published
+  const gradeLevel = body.grade_level ?? null
   const validSchedule = schedule && typeof schedule === 'object' && !Array.isArray(schedule) && typeof schedule.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(schedule.startDate) && typeof schedule.endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(schedule.endDate) && schedule.endDate >= schedule.startDate
-  if (!title || title.length > 200 || !classPrograms.includes(programId) || !Number.isInteger(tutorId) || tutorId < 1 || !Number.isInteger(capacity) || capacity < 1 || !validSchedule || meetingLink.length > 2000 || !Number.isFinite(price) || price < 0 || typeof published !== 'boolean') return null
-  return { program_id: programId, title, tutor_id: tutorId, capacity, schedule, meeting_link: meetingLink, modules, price, published }
+  if (!title || title.length > 200 || !classPrograms.includes(programId) || !Number.isInteger(tutorId) || tutorId < 1 || !Number.isInteger(capacity) || capacity < 1 || !validSchedule || meetingLink.length > 2000 || !Number.isFinite(price) || price < 0 || typeof published !== 'boolean' || (gradeLevel !== null && (!Number.isInteger(gradeLevel) || gradeLevel < 1 || gradeLevel > 12))) return null
+  return { program_id: programId, title, tutor_id: tutorId, capacity, schedule, meeting_link: meetingLink, modules, price, published, grade_level: gradeLevel }
 }
 
 const classColumns = sql.unsafe(`
@@ -3435,6 +3437,7 @@ const classColumns = sql.unsafe(`
   classes.schedule,
   classes.meeting_link,
   classes.modules,
+  classes.grade_level,
   classes.price::FLOAT AS price,
   classes.status,
   classes.published
@@ -3517,11 +3520,11 @@ app.get('/api/admin/classes', requireAdminOrTutor, async (_request, response) =>
 
 app.post('/api/admin/classes', requireAdminOrTutor, async (request, response) => {
   const classPayload = parseClassPayload(request.body)
-  if (!classPayload) return response.status(400).json({ message: 'Enter valid class details.' })
+  if (!classPayload || classPayload.grade_level === null) return response.status(400).json({ message: 'Enter valid class details.' })
   try {
     const [created] = await sql`
-      INSERT INTO classes (program_id, title, tutor_id, capacity, schedule, meeting_link, modules, price, published, status)
-      VALUES (${classPayload.program_id}, ${classPayload.title}, ${classPayload.tutor_id}, ${classPayload.capacity}, ${JSON.stringify(classPayload.schedule)}::jsonb, ${classPayload.meeting_link}, ${JSON.stringify(classPayload.modules)}::jsonb, ${classPayload.price}, ${classPayload.published}, ${classPayload.published ? 'open' : 'closed'})
+      INSERT INTO classes (program_id, title, tutor_id, capacity, schedule, meeting_link, modules, price, published, status, grade_level)
+      VALUES (${classPayload.program_id}, ${classPayload.title}, ${classPayload.tutor_id}, ${classPayload.capacity}, ${JSON.stringify(classPayload.schedule)}::jsonb, ${classPayload.meeting_link}, ${JSON.stringify(classPayload.modules)}::jsonb, ${classPayload.price}, ${classPayload.published}, ${classPayload.published ? 'open' : 'closed'}, ${classPayload.grade_level})
       RETURNING id
     `
     return response.status(201).json(await readAdminClass(Number(created.id)))
