@@ -256,6 +256,8 @@ const getClassLiveLessonSettings = (schedule: ClassLessonSchedule, meetingLink: 
   return { meetingUrl: meetingLink, recurringDays: schedule.days, sessionTime: schedule.time, sessionDuration: schedule.duration, estimatedDuration: schedule.duration * 60, scheduledAt: selectedDate ? toLocalDateTime(selectedDate) : '', endsAt: end ? toLocalDateTime(end) : '' }
 }
 
+const courseWithoutLiveLessonsId = 211
+
 const lessonTypeOptions: Array<{ type: LessonType; label: string; detail: string }> = [
   { type: 'video', label: 'Video', detail: 'Upload a lecture' },
   { type: 'article', label: 'Article', detail: 'Write a lesson' },
@@ -944,7 +946,7 @@ const CourseEditorPage: FC<CourseEditorPageProps> = ({ mode, courseId }) => {
         description={mode === 'new' ? 'Create a course and build its learning path.' : `Update ${course.title} and its learning path.`}
         action={<Stack direction="row" spacing={1}><Button label="Back to courses" variant="text" onClick={() => navigateTo('/admin/courses')} /><Button label={mode === 'new' ? 'Create course' : 'Save changes'} onClick={() => void saveCourse()} disabled={isSaving} /></Stack>}
       />
-      <CourseEditor course={course} onChange={setCourse} isClassLinked={isClassLinked} />
+      <CourseEditor course={course} onChange={setCourse} isClassLinked={isClassLinked} allowedLessonTypes={course.id === courseWithoutLiveLessonsId ? lessonTypeOptions.filter((option) => option.type !== 'live').map((option) => option.type) : undefined} />
     </>
   )
 }
