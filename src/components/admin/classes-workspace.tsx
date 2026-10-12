@@ -263,7 +263,7 @@ const ClassCurriculumEditor: FC<{ modules: AdminModule[]; onChange: (modules: Ad
 
 const allGradeLevels = Array.from({ length: 12 }, (_, index) => index + 1)
 
-const getGradeLevelOptions = (programId: ProgramId, isEditing: boolean) => programId === 'ministry-exam-prep' && !isEditing ? [6, 8, 12] : allGradeLevels
+const getGradeLevelOptions = (programId: ProgramId) => programId === 'ministry-exam-prep' ? [6, 8, 12] : allGradeLevels
 
 const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boolean; onClose: () => void; onSave: (values: ClassFormValue) => void }> = ({ classRecord, open, onClose, onSave }) => {
   const [values, setValues] = useState<ClassFormValue>(emptyClassForm)
@@ -287,6 +287,8 @@ const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boolean; onC
   const classDateValidation = getDateValidation(values.schedule, allowedPastStartDate)
   const canSave = Boolean((classRecord || values.grade_level !== null) && values.title.trim() && values.tutor_id >= 1 && values.capacity >= 1 && values.schedule.startDate && values.schedule.endDate && values.schedule.days.length && values.schedule.time && values.meeting_link && !classDateValidation.startInPast && !classDateValidation.endBeforeStart)
   const selectablePrograms = classRecord ? Object.keys(programLabels) as ProgramId[] : manageablePrograms
+  const gradeOptions = getGradeLevelOptions(values.program_id)
+  const isOffStandardGrade = values.grade_level !== null && !gradeOptions.includes(values.grade_level)
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" aria-labelledby="class-editor-title">
@@ -295,7 +297,7 @@ const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boolean; onC
         <Stack spacing={2.5}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField required fullWidth label="Title" value={values.title} onChange={(event) => setValues({ ...values, title: event.target.value })} />
-            <FormControl fullWidth required><InputLabel>Program</InputLabel><Select label="Program" value={values.program_id} onChange={(event) => setValues({ ...values, program_id: event.target.value as ProgramId, grade_level: null })}>{selectablePrograms.map((program) => <MenuItem key={program} value={program}>{programLabels[program]}</MenuItem>)}</Select></FormControl><FormControl fullWidth required error={!classRecord && values.grade_level === null}><InputLabel>Grade Level</InputLabel><Select label="Grade Level" value={values.grade_level ?? ''} onChange={(event) => setValues({ ...values, grade_level: Number(event.target.value) })}>{getGradeLevelOptions(values.program_id, Boolean(classRecord)).map((grade) => <MenuItem key={grade} value={grade}>Grade {grade}</MenuItem>)}</Select>{!classRecord && values.grade_level === null && <FormHelperText>Select a grade level for this program</FormHelperText>}</FormControl>
+            <FormControl fullWidth required><InputLabel>Program</InputLabel><Select label="Program" value={values.program_id} onChange={(event) => setValues({ ...values, program_id: event.target.value as ProgramId, grade_level: null })}>{selectablePrograms.map((program) => <MenuItem key={program} value={program}>{programLabels[program]}</MenuItem>)}</Select></FormControl><FormControl fullWidth required error={isOffStandardGrade || (!classRecord && values.grade_level === null)}><InputLabel>Grade Level</InputLabel><Select label="Grade Level" value={values.grade_level ?? ''} onChange={(event) => setValues({ ...values, grade_level: Number(event.target.value) })}>{gradeOptions.map((grade) => <MenuItem key={grade} value={grade}>Grade {grade}</MenuItem>)}{isOffStandardGrade && <MenuItem value={values.grade_level ?? ''}>Grade {values.grade_level} (outside exam grades)</MenuItem>}</Select>{!classRecord && values.grade_level === null && <FormHelperText>Select a grade level for this program</FormHelperText>}{isOffStandardGrade && <FormHelperText>This class has a grade outside the standard exam grades — please update it</FormHelperText>}</FormControl>
           </Stack>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField required fullWidth label="Capacity" type="number" value={values.capacity} onChange={(event) => setValues({ ...values, capacity: Math.max(1, Number(event.target.value)) })} inputProps={{ min: 1 }} />
