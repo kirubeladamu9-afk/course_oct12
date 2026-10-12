@@ -233,6 +233,7 @@ export interface PublicClass {
   enrolledCount: number
   published: boolean
   enrollmentClosed: boolean
+  gradeLevel: number | null
   moduleCount: number | null
   lessonCount: number | null
 }

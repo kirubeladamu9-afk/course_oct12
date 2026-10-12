@@ -21,7 +21,8 @@ import { getPublicClasses, type PublicClass } from '@/services/api'
 import { type Course } from '@/interfaces/course'
 
 type ProgramId = 'international-online-interactive' | 'summer-camp' | 'ministry-exam-prep'
-type MinistryGrade = 'Grade 6' | 'Grade 8'
+const ministryGrades = [6, 8, 12] as const
+type MinistryGrade = (typeof ministryGrades)[number]
 
 type CheckoutCourse = Pick<Course, 'id' | 'title' | 'price'> & { id: number }
 
@@ -146,7 +147,7 @@ interface BatchDrawerProps {
 
 const BatchDrawer: FC<BatchDrawerProps> = ({ programId, classes, open, grade, onGradeChange, onClose, onEnroll }) => {
   const visibleClasses = programId === 'ministry-exam-prep'
-    ? classes.filter((classRecord) => classRecord.title.toLowerCase().includes(grade.toLowerCase()) || classRecord.courseTitle?.toLowerCase().includes(grade.toLowerCase()))
+    ? classes.filter((classRecord) => classRecord.gradeLevel === grade)
     : classes
 
   return (
@@ -208,8 +209,8 @@ const BatchDrawer: FC<BatchDrawerProps> = ({ programId, classes, open, grade, on
 
 const Tabs: FC<{ grade: MinistryGrade; onGradeChange: (grade: MinistryGrade) => void }> = ({ grade, onGradeChange }) => (
   <Stack direction="row" spacing={0.5} sx={{ mb: 2, p: 0.5, borderRadius: 2, backgroundColor: 'background.default' }}>
-    {(['Grade 6', 'Grade 8'] as MinistryGrade[]).map((option) => (
-      <Button key={option} fullWidth size="small" variant={grade === option ? 'contained' : 'text'} onClick={() => onGradeChange(option)}>{option}</Button>
+    {ministryGrades.map((option) => (
+      <Button key={option} fullWidth size="small" variant={grade === option ? 'contained' : 'text'} onClick={() => onGradeChange(option)}>Grade {option}</Button>
     ))}
   </Stack>
 )
@@ -222,7 +223,7 @@ interface ProgramCardProps {
 
 const ProgramCard: FC<ProgramCardProps> = ({ program, classes, onEnroll }) => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
-  const [grade, setGrade] = useState<MinistryGrade>('Grade 6')
+  const [grade, setGrade] = useState<MinistryGrade>(6)
   const isBatchProgram = program.id !== 'international-online-interactive'
 
   return (

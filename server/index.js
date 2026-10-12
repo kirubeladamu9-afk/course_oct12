@@ -2486,6 +2486,7 @@ app.get('/api/classes', async (_request, response) => {
            classes.capacity,
            COALESCE(enrollment_counts.enrolled_count, 0)::INTEGER AS "enrolledCount",
            classes.published,
+           classes.grade_level AS "gradeLevel",
            jsonb_array_length(CASE WHEN jsonb_typeof(classes.modules) = 'array' THEN classes.modules ELSE '[]'::jsonb END)::INTEGER AS "moduleCount",
            (SELECT COUNT(*)::INTEGER FROM jsonb_array_elements(CASE WHEN jsonb_typeof(classes.modules) = 'array' THEN classes.modules ELSE '[]'::jsonb END) AS module CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(module->'lessons') = 'array' THEN module->'lessons' ELSE '[]'::jsonb END) AS lesson) AS "lessonCount"
     FROM classes
