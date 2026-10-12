@@ -45,6 +45,7 @@ export interface QuizQuestion {
   topic: string
   options: string[]
   correctOption: number
+  explanation?: string
 }
 
 export interface PracticeQuestion {

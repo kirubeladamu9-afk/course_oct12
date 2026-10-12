@@ -1,5 +1,9 @@
 import { useMemo, type FC, type ReactNode } from 'react'
 import Alert from '@mui/material/Alert'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
 import Avatar from '@mui/material/Avatar'
 import MuiButton from '@mui/material/Button'
 import Box from '@mui/material/Box'
@@ -67,6 +71,7 @@ import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutl
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline'
 import QuizOutlinedIcon from '@mui/icons-material/QuizOutlined'
 import TitleIcon from '@mui/icons-material/Title'
+import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined'
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { toast } from '@/components/toast'
@@ -83,6 +88,7 @@ import PracticeExamManagement from './practice-exam-management'
 import { BookstoreAdminPage } from '@/components/bookstore/bookstore-page'
 import PlatformEngineLessonPicker from './platform-engine-lesson-picker'
 import { getNextLessonId, type AdminCourse, type AdminLesson, type AdminTutor, type AdminUser, type LessonType } from './admin-data'
+import type { ImportableLessonType, LessonImportPreview } from './lesson-docx'
 import InteractiveHotspotEditor from './interactive-hotspot-editor'
 import { STEM_TOOL_LIBRARY, STEM_TOOL_PICKER_COMING_SOON, type StemToolDefinition } from '@/components/stem-lab/stem-tool-library'
 
@@ -253,6 +259,8 @@ export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCou
   const [lessonPanel, setLessonPanel] = useState<LessonPanelState | null>(null)
   const [videoUploadProgress, setVideoUploadProgress] = useState(0)
   const [expandedSections, setExpandedSections] = useState<string[]>([])
+  const [lessonImportPreview, setLessonImportPreview] = useState<{ moduleId: number; type: ImportableLessonType; result: LessonImportPreview } | null>(null)
+  const [isImportingLesson, setIsImportingLesson] = useState(false)
 
   useEffect(() => {
     setExpandedModuleIds([])
@@ -261,6 +269,7 @@ export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCou
     setEditingModuleId(null)
     setAddingLessonModuleId(null)
     setLessonPanel(null)
+    setLessonImportPreview(null)
     setVideoUploadProgress(0)
     setExpandedSections([])
   }, [course.id])
@@ -335,6 +344,52 @@ export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCou
   }
 
   const updateLessonDraft = (nextLesson: AdminLesson) => setLessonPanel((panel) => panel ? { ...panel, lesson: nextLesson } : panel)
+
+  const importLessonFile = async (moduleId: number, type: ImportableLessonType, file: File) => {
+    setIsImportingLesson(true)
+    setLessonImportPreview({ moduleId, type, result: { title: '', articleBody: '', questions: [], issues: [], fatalError: null } })
+    try {
+      const result = file.size > 10 * 1024 * 1024
+        ? { title: '', articleBody: '', questions: [], issues: [], fatalError: 'DOCX files must be 10 MB or smaller.' }
+        : !file.name.toLowerCase().endsWith('.docx')
+          ? { title: '', articleBody: '', questions: [], issues: [], fatalError: 'Choose a .docx file downloaded from the matching lesson template.' }
+          : await (await import('./lesson-docx')).parseLessonDocx(type, await file.arrayBuffer())
+      setLessonImportPreview({ moduleId, type, result })
+    } catch {
+      setLessonImportPreview({ moduleId, type, result: { title: '', articleBody: '', questions: [], issues: [], fatalError: 'This file could not be read. Download a fresh template and try again.' } })
+    } finally {
+      setIsImportingLesson(false)
+    }
+  }
+
+  const applyLessonImport = () => {
+    if (!lessonImportPreview || lessonImportPreview.result.fatalError) return
+    const { moduleId, type, result } = lessonImportPreview
+    const id = getNextLessonId(course.modules)
+    const importedLesson: AdminLesson = {
+      id,
+      title: result.title.trim(),
+      type,
+      duration: null,
+      resources: [],
+      ...(type === 'article' ? { articleBody: result.articleBody } : {}),
+      ...(type === 'quiz' ? { passThreshold: 70, quizQuestions: result.questions.map((question, index) => ({ id: index + 1, question: question.question, topic: question.topic, options: question.options, correctOption: question.correctOption, explanation: question.explanation })) } : {}),
+      ...(type === 'practice' ? { practiceQuestions: result.questions.map((question, index) => ({ id: index + 1, question: question.question, topic: question.topic, options: question.options, correctAnswer: question.options[question.correctOption], explanation: question.explanation })) } : {}),
+    }
+    onChange({ ...course, modules: course.modules.map((module) => module.id === moduleId ? { ...module, lessons: [...module.lessons, importedLesson] } : module) })
+    setExpandedModuleIds((ids) => ids.includes(moduleId) ? ids : [...ids, moduleId])
+    setAddingLessonModuleId(null)
+    setLessonImportPreview(null)
+    toast.add({ title: 'Lessons imported', description: `${result.title} was added to the course draft. Save changes to persist it.`, type: 'success' })
+  }
+
+  const downloadTemplate = async (type: ImportableLessonType) => {
+    try {
+      await (await import('./lesson-docx')).downloadLessonTemplate(type)
+    } catch {
+      toast.add({ title: 'Unable to download template', description: 'Please try again.', type: 'error' })
+    }
+  }
 
   const deleteLesson = (moduleId: number, lessonId: number) => {
     onChange({ ...course, modules: course.modules.map((module) => module.id === moduleId ? { ...module, lessons: module.lessons.filter((lesson) => lesson.id !== lessonId) } : module) })
@@ -474,7 +529,7 @@ export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCou
                 <Tooltip title={`Edit ${lesson.title}`}><IconButton size="small" onClick={() => openLessonPanel(module.id, lesson, false)} aria-label={`Edit ${lesson.title}`}><EditOutlinedIcon fontSize="small" /></IconButton></Tooltip><Tooltip title={`Delete ${lesson.title}`}><IconButton size="small" color="error" onClick={() => deleteLesson(module.id, lesson.id)} aria-label={`Delete ${lesson.title}`}><DeleteOutlineIcon fontSize="small" /></IconButton></Tooltip>
               </Box>)}
               {module.lessons.length === 0 && <Typography color="text.secondary" variant="body2" sx={{ py: 1 }}>No lessons yet</Typography>}
-              {addingLessonModuleId === module.id ? <Paper elevation={0} sx={{ p: 1.5, border: 1, borderColor: 'divider', backgroundColor: 'background.paper' }}><Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}><Typography variant="body2" sx={{ fontWeight: 600 }}>Choose a lesson type</Typography>{isClassLinked && <Typography color="text.secondary" variant="caption" sx={{ display: 'block', mb: 1 }}>This course is linked to a Class. Use Video, Article, Interactive, or Quiz for course content; the Class manages live sessions.</Typography>}<IconButton size="small" onClick={() => setAddingLessonModuleId(null)} aria-label="Cancel adding lesson"><CloseIcon fontSize="small" /></IconButton></Box><Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', sm: 'repeat(4, minmax(0, 1fr))' }, gap: 1 }}>{lessonTypeOptions.filter((option) => (!isClassLinked || option.type !== 'live') && (!allowedLessonTypes || allowedLessonTypes.includes(option.type))).map((option) => <Box key={option.type} component="button" type="button" onClick={() => openLessonPanel(module.id, createLesson(getNextLessonId(course.modules), option.type), true)} sx={{ width: '100%', minWidth: 0, display: 'flex', alignItems: 'center', gap: 1, p: 1, border: 1, borderColor: 'divider', borderRadius: 1, backgroundColor: 'background.default', color: 'text.primary', cursor: 'pointer', textAlign: 'left', font: 'inherit', '&:hover': { borderColor: 'primary.main', backgroundColor: 'action.hover' } }}><Box sx={{ color: 'primary.main', display: 'flex' }}><LessonTypeIcon type={option.type} /></Box><Box><Typography variant="body2" sx={{ fontWeight: 600 }}>{option.label}</Typography><Typography variant="caption" color="text.secondary">{option.detail}</Typography></Box></Box>)}</Box></Paper> : <Box component="button" type="button" onClick={() => setAddingLessonModuleId(module.id)} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, alignSelf: 'flex-start', p: 0.5, color: 'primary.main', background: 'none', border: 0, cursor: 'pointer', font: 'inherit' }}><AddIcon fontSize="small" /> Add lesson</Box>}
+              {addingLessonModuleId === module.id ? <Paper elevation={0} sx={{ p: 1.5, border: 1, borderColor: 'divider', backgroundColor: 'background.paper' }}><Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}><Typography variant="body2" sx={{ fontWeight: 600 }}>Choose a lesson type</Typography>{isClassLinked && <Typography color="text.secondary" variant="caption" sx={{ display: 'block', mb: 1 }}>This course is linked to a Class. Use Video, Article, Interactive, or Quiz for course content; the Class manages live sessions.</Typography>}<IconButton size="small" onClick={() => setAddingLessonModuleId(null)} aria-label="Cancel adding lesson"><CloseIcon fontSize="small" /></IconButton></Box><Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', sm: 'repeat(4, minmax(0, 1fr))' }, gap: 1 }}>{lessonTypeOptions.filter((option) => (!isClassLinked || option.type !== 'live') && (!allowedLessonTypes || allowedLessonTypes.includes(option.type))).map((option) => { const supportsDocxImport = ['article', 'quiz', 'practice'].includes(option.type); return <Paper key={option.type} elevation={0} sx={{ width: '100%', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5, p: 0.75, border: 1, borderColor: 'divider', borderRadius: 1, backgroundColor: 'background.default' }}><Box component='button' type='button' onClick={() => openLessonPanel(module.id, createLesson(getNextLessonId(course.modules), option.type), true)} sx={{ flex: 1, width: 'auto', minWidth: 0, display: 'flex', alignItems: 'center', gap: 1, p: 0.5, border: 0, borderRadius: 1, background: 'none', color: 'text.primary', cursor: 'pointer', textAlign: 'left', font: 'inherit', '&:hover': { backgroundColor: 'action.hover' } }}><Box sx={{ color: 'primary.main', display: 'flex', flexShrink: 0 }}><LessonTypeIcon type={option.type} /></Box><Box sx={{ minWidth: 0 }}><Typography variant='body2' sx={{ fontWeight: 600 }}>{option.label}</Typography><Typography variant='caption' color='text.secondary'>{option.detail}</Typography></Box></Box>{supportsDocxImport && <Stack direction='row' justifyContent='flex-end' spacing={0.25}><Tooltip title='Download template'><IconButton size='small' sx={{ p: 0.25 }} aria-label={'Download template for ' + option.label} onClick={() => void downloadTemplate(option.type as ImportableLessonType)}><DownloadOutlinedIcon fontSize='small' /></IconButton></Tooltip><Tooltip title='Import'><IconButton component='label' size='small' sx={{ p: 0.25 }} disabled={isImportingLesson} aria-label={'Import ' + option.label + ' lesson'}><UploadFileOutlinedIcon fontSize='small' /><input hidden type='file' accept='.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document' aria-label={'Import ' + option.label + ' lesson DOCX'} onChange={(event) => { const [file] = Array.from(event.target.files ?? []); if (file) void importLessonFile(module.id, option.type as ImportableLessonType, file); event.target.value = '' }} /></IconButton></Tooltip></Stack>}</Paper> })}</Box></Paper> : <Box component="button" type="button" onClick={() => setAddingLessonModuleId(module.id)} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, alignSelf: 'flex-start', p: 0.5, color: 'primary.main', background: 'none', border: 0, cursor: 'pointer', font: 'inherit' }}><AddIcon fontSize="small" /> Add lesson</Box>}
             </Stack>}
           </Paper>
         })}
@@ -482,6 +537,7 @@ export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCou
           </Stack>
       </CourseEditorSection>
       {lessonPanel && <LessonDetailsPanel lessonPanel={lessonPanel} updateLessonDraft={updateLessonDraft} onClose={() => setLessonPanel(null)} onSave={saveLesson} onVideoFile={handleVideoFile} onAddResources={addResources} videoUploadProgress={videoUploadProgress} disabled={cannotSaveLesson} classSchedule={classSchedule} classMeetingLink={classMeetingLink} availableLiveSessionDates={liveLessonSessionDates} />}
+      <Dialog open={Boolean(lessonImportPreview)} onClose={() => setLessonImportPreview(null)} fullWidth maxWidth="md"><DialogTitle>Review imported {lessonImportPreview?.type} lesson</DialogTitle><DialogContent dividers><Stack spacing={1.5}>{isImportingLesson ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress aria-label="Reading lesson DOCX" /></Box> : lessonImportPreview && <><Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{lessonImportPreview.result.title || 'Lesson title unavailable'}</Typography>{lessonImportPreview.result.fatalError && <Alert severity="error">{lessonImportPreview.result.fatalError}</Alert>}{lessonImportPreview.result.issues.map((issue, index) => <Alert key={`${index}-${issue}`} severity="warning">{issue}</Alert>)}{lessonImportPreview.type === 'article' && lessonImportPreview.result.articleBody && <Paper variant="outlined" sx={{ p: 1.5, maxHeight: 240, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{lessonImportPreview.result.articleBody}</Paper>}{lessonImportPreview.result.questions.map((question, index) => <Paper key={`${index}-${question.question}`} variant="outlined" sx={{ p: 1.5 }}><Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>Question {question.number}: {question.question}</Typography><Typography variant="caption" color="text.secondary">Topic: {question.topic}</Typography><Stack spacing={0.25} sx={{ mt: 0.75 }}>{question.options.map((option, optionIndex) => <Typography key={`${optionIndex}-${option}`} variant="body2" color={optionIndex === question.correctOption ? 'success.main' : 'text.primary'}>{String.fromCharCode(65 + optionIndex)}. {option}{optionIndex === question.correctOption ? ' — Correct answer' : ''}</Typography>)}</Stack>{question.explanation && <Typography variant="body2" sx={{ mt: 0.75 }}>Explanation: {question.explanation}</Typography>}</Paper>)}{!lessonImportPreview.result.fatalError && lessonImportPreview.result.issues.length === 0 && <Alert severity="info">This lesson will be appended to the current module. It remains a draft until you save the course or class.</Alert>}{!lessonImportPreview.result.fatalError && lessonImportPreview.result.issues.length > 0 && <Alert severity="info">{lessonImportPreview.result.questions.length} valid question(s) will be imported; the flagged entries will be skipped.</Alert>}</>}</Stack></DialogContent><DialogActions><MuiButton onClick={() => setLessonImportPreview(null)}>Cancel</MuiButton><MuiButton variant="contained" onClick={applyLessonImport} disabled={isImportingLesson || !lessonImportPreview || Boolean(lessonImportPreview.result.fatalError) || (lessonImportPreview.type !== 'article' && !lessonImportPreview.result.questions.length)}>Add to current module</MuiButton></DialogActions></Dialog>
     </Paper>
   )
 }
