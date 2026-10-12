@@ -52,6 +52,24 @@ describe('parseLessonParagraphs', () => {
     expect(result.fatalError).toBeNull()
   })
 
+  it('preserves embedded image position and associates a following short caption', () => {
+    const result = parseLessonParagraphs('article', [
+      paragraph('Article template instructions'),
+      paragraph('LESSON TYPE: ARTICLE'),
+      paragraph('Light and Exposure', 1),
+      paragraph('Exposure controls brightness.'),
+      { text: '', heading: null, parts: [{ type: 'image', imageUrl: 'data:image/png;base64,aGVsbG8=' }] },
+      paragraph('Aperture blades form the opening.'),
+      paragraph('A wider aperture lets in more light.'),
+    ])
+
+    expect(result.articleBlocks).toEqual([
+      { type: 'text', text: 'Exposure controls brightness.' },
+      { type: 'image', imageUrl: 'data:image/png;base64,aGVsbG8=', caption: 'Aperture blades form the opening.' },
+      { type: 'text', text: 'A wider aperture lets in more light.' },
+    ])
+  })
+
   it('keeps valid questions and identifies malformed questions by source number', () => {
     const result = parseLessonParagraphs('quiz', [
       ...questionTemplate('QUIZ'),
