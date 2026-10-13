@@ -266,7 +266,7 @@ const allGradeLevels = Array.from({ length: 12 }, (_, index) => index + 1)
 
 const getGradeLevelOptions = (programId: ProgramId) => programId === 'ministry-exam-prep' ? [6, 8, 12] : allGradeLevels
 
-export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boolean; onClose: () => void; onSave: (values: ClassFormValue) => void; tutorOptions?: TutorOption[] }> = ({ classRecord, open, onClose, onSave, tutorOptions = tutors }) => {
+export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boolean; onClose: () => void; onSave: (values: ClassFormValue) => void; tutorOptions?: TutorOption[]; fullPage?: boolean }> = ({ classRecord, open, onClose, onSave, tutorOptions = tutors, fullPage = false }) => {
   const [values, setValues] = useState<ClassFormValue>(emptyClassForm)
   const initializedRef = useRef(false)
 
@@ -292,8 +292,8 @@ export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boole
   const isOffStandardGrade = values.grade_level !== null && !gradeOptions.includes(values.grade_level)
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" aria-labelledby="class-editor-title">
-      <DialogTitle id="class-editor-title" sx={{ pr: 7 }}>{classRecord ? 'Edit class' : 'New class'}<IconButton aria-label="Close class form" onClick={onClose} sx={{ position: 'absolute', top: 12, right: 12 }}><CloseIcon /></IconButton></DialogTitle>
+    <Dialog open={open} onClose={onClose} fullWidth fullScreen={fullPage} maxWidth="md" aria-labelledby="class-editor-title">
+      <DialogTitle id="class-editor-title" sx={{ pr: 7 }}>{classRecord ? 'Edit class' : 'New class'}<IconButton aria-label={fullPage ? 'Back to My Classes' : 'Close class form'} onClick={onClose} sx={{ position: 'absolute', top: 12, right: 12 }}>{fullPage ? <ArrowBackIcon /> : <CloseIcon />}</IconButton></DialogTitle>
       <DialogContent dividers sx={{ p: { xs: 2.5, sm: 3 } }}>
         <Stack spacing={2.5}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -310,7 +310,7 @@ export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boole
           <Box sx={{ display: 'flex\',, alignItems: \'center\', justifyContent: \'space-between\', gap: 2, p: 2, border: 1, borderColor: \'divider\', borderRadius: 1, backgroundColor: \'background.default' }}><Box><Typography variant="body2" sx={{ fontWeight: 600 }}>{values.published ? 'Published class' : 'Unpublished class'}</Typography><Typography color="text.secondary" variant="caption">Only published classes appear in Active Classes.</Typography></Box><Switch checked={values.published} onChange={(event) => setValues({ ...values, published: event.target.checked })} inputProps={{ 'aria-label': 'Publish class' }} /></Box>
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ p: 2 }}><Button onClick={onClose}>Cancel</Button><Button variant="contained" onClick={() => onSave(values)} disabled={!canSave}>{classRecord ? 'Save changes' : 'Create class'}</Button></DialogActions>
+      <DialogActions sx={{ p: 2 }}><Button onClick={onClose}>{fullPage ? 'Back to My Classes' : 'Cancel'}</Button><Button variant="contained" onClick={() => onSave(values)} disabled={!canSave}>{classRecord ? 'Save changes' : 'Create class'}</Button></DialogActions>
     </Dialog>
   )
 }

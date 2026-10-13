@@ -62,8 +62,19 @@ const tutorViewPaths: Record<View, string> = {
   profile: '/tutor/profile',
 }
 
-const getTutorViewFromPath = (pathname: string): View =>
-  (Object.entries(tutorViewPaths).find(([, path]) => pathname === path || pathname === `${path}/`)?.[0] as View | undefined) ?? 'overview'
+const getTutorEditTargetFromPath = (pathname: string): { type: 'course' | 'class'; id: number } | null => {
+  const [, , section, rawId, action] = pathname.split('/')
+  const id = Number(rawId)
+  return (section === 'courses' || section === 'classes') && action === 'edit' && Number.isInteger(id) && id > 0
+    ? { type: section === 'courses' ? 'course' : 'class', id }
+    : null
+}
+
+const getTutorViewFromPath = (pathname: string): View => {
+  const editTarget = getTutorEditTargetFromPath(pathname)
+  if (editTarget) return editTarget.type === 'course' ? 'courses' : 'classes'
+  return (Object.entries(tutorViewPaths).find(([, path]) => pathname === path || pathname === `${path}/`)?.[0] as View | undefined) ?? 'overview'
+}
 
 const statItems = (overview: TutorOverview) => [
   { label: 'Assigned courses', value: overview.totalCourses, icon: <SchoolOutlinedIcon color="primary" /> },
@@ -191,6 +202,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [mobileOpen, setMobileOpen] = useState(false)
   const [profileAnchor, setProfileAnchor] = useState<null | HTMLElement>(null)
+  const [currentPath, setCurrentPath] = useState(window.location.pathname)
   const [view, setView] = useState<View>(() => getTutorViewFromPath(window.location.pathname))
   const [courseSearch, setCourseSearch] = useState('')
   const [courseFilter, setCourseFilter] = useState('all')
@@ -259,6 +271,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
   }, [])
   useEffect(() => {
     const syncView = () => {
+      setCurrentPath(window.location.pathname)
       setView(getTutorViewFromPath(window.location.pathname))
       setProgressTarget(null)
       setError('')
@@ -266,6 +279,22 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
     window.addEventListener('popstate', syncView)
     return () => window.removeEventListener('popstate', syncView)
   }, [])
+  useEffect(() => {
+    const target = getTutorEditTargetFromPath(currentPath)
+    if (!target) {
+      setCourseDraft(null)
+      setClassDraft(null)
+      return
+    }
+    if (target.type === 'course') {
+      setCourseDraft(courses.find((course) => course.id === target.id) ?? null)
+      setClassDraft(null)
+      return
+    }
+    const classRecord = classes.find((record) => record.id === target.id)
+    setCourseDraft(null)
+    setClassDraft(classRecord ? { id: classRecord.id, program_id: classRecord.programId as ProgramId, title: classRecord.title, tutor_id: classRecord.tutorId, tutor_name: classRecord.tutorName, capacity: classRecord.capacity, schedule: { startDate: classRecord.schedule.startDate, endDate: classRecord.schedule.endDate, days: classRecord.schedule.days, time: classRecord.schedule.time, duration: classRecord.schedule.duration }, meeting_link: classRecord.meetingLink, modules: classRecord.modules, price: classRecord.price, status: classRecord.status, published: classRecord.published, grade_level: classRecord.gradeLevel } : null)
+  }, [currentPath, courses, classes])
   useEffect(() => {
     const timer = window.setInterval(() => { void refreshAtRisk() }, 30000)
     return () => window.clearInterval(timer)
@@ -320,7 +349,8 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
   const visibleCourses = courses.filter((course) => `${course.title} ${course.category}`.toLowerCase().includes(courseSearch.trim().toLowerCase()) && (courseFilter === 'all' || course.status.toLowerCase() === courseFilter))
   const visibleClasses = classes.filter((classRecord) => `${classRecord.title} ${classRecord.programId} ${classRecord.courseTitle ?? ''}`.toLowerCase().includes(classSearch.trim().toLowerCase()) && (classFilter === 'all' || (classFilter === 'published' ? classRecord.published : !classRecord.published)))
   const liveLessons = useMemo(() => selectedClass?.modules.flatMap((module) => module.lessons).filter((lesson) => lesson.type === 'live') ?? [], [selectedClass])
-  const pageTitle = courseDraft ? 'Edit Course' : classDraft ? 'Edit Class' : progressTarget ? 'Student Progress' : view === 'overview' ? 'Overview' : view === 'schedule' ? 'Schedule' : view === 'courses' ? 'My Courses' : view === 'classes' ? 'My Classes' : view === 'students' ? 'Students & Attendance' : 'Profile'
+  const editTarget = getTutorEditTargetFromPath(currentPath)
+  const pageTitle = editTarget?.type === 'course' ? 'Edit Course' : editTarget?.type === 'class' ? 'Edit Class' : progressTarget ? 'Student Progress' : view === 'overview' ? 'Overview' : view === 'schedule' ? 'Schedule' : view === 'courses' ? 'My Courses' : view === 'classes' ? 'My Classes' : view === 'students' ? 'Students & Attendance' : 'Profile'
 
   useEffect(() => {
     document.title = `${SITE_NAME} | ${pageTitle}`
@@ -345,7 +375,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
     } finally { setSaving(false) }
   }
 
-  const manageCourse = (course: AdminCourse) => setCourseDraft(course)
+  const manageCourse = (course: AdminCourse) => navigateTo(`/tutor/courses/${course.id}/edit`)
 
   const saveCourseDraft = async () => {
     if (!courseDraft) return
@@ -353,7 +383,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
     try {
       const savedCourse = await updateTutorCourse(courseDraft)
       setCourses(await getTutorCourses())
-      setCourseDraft(null)
+      navigateTo(tutorViewPaths.courses)
       toast.add({ type: 'success', title: 'Course saved', description: `${savedCourse.title} was updated.` })
     } catch (saveError) {
       const message = saveError instanceof Error ? saveError.message : 'Unable to save course.'
@@ -362,9 +392,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
     } finally { setSaving(false) }
   }
 
-  const manageClass = (classRecord: TutorClass) => {
-    setClassDraft({ id: classRecord.id, program_id: classRecord.programId as ProgramId, title: classRecord.title, tutor_id: classRecord.tutorId, tutor_name: classRecord.tutorName, capacity: classRecord.capacity, schedule: { startDate: classRecord.schedule.startDate, endDate: classRecord.schedule.endDate, days: classRecord.schedule.days, time: classRecord.schedule.time, duration: classRecord.schedule.duration }, meeting_link: classRecord.meetingLink, modules: classRecord.modules, price: classRecord.price, status: classRecord.status, published: classRecord.published, grade_level: classRecord.gradeLevel })
-  }
+  const manageClass = (classRecord: TutorClass) => navigateTo(`/tutor/classes/${classRecord.id}/edit`)
 
   const saveClassDraft = async (values: ClassFormValue) => {
     if (!classDraft) return
@@ -372,7 +400,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
     try {
       await updateTutorClass({ id: classDraft.id, ...values })
       setClasses(await getTutorClasses())
-      setClassDraft(null)
+      navigateTo(tutorViewPaths.classes)
       toast.add({ type: 'success', title: 'Class saved', description: `${values.title} was updated.` })
     } catch (saveError) {
       const message = saveError instanceof Error ? saveError.message : 'Unable to save class.'
@@ -465,8 +493,10 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
         </Stack>
       </Box>
       <Box component="main" sx={{ flex: 1, maxWidth: 1440, mx: 'auto', width: '100%', p: { xs: 2, sm: 2.5, md: 4 } }}>
-      {courseDraft && <><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 2 }}><Box><Button onClick={() => setCourseDraft(null)} sx={{ mb: 1 }}>Back to My Courses</Button><Typography variant="h4">Edit course</Typography><Typography color="text.secondary">Update course details, publishing, requirements, and curriculum.</Typography></Box><Button variant="contained" onClick={() => void saveCourseDraft()} disabled={saving}>Save changes</Button></Stack><CourseEditor course={courseDraft} onChange={setCourseDraft} allowedLessonTypes={getAllowedCourseLessonTypes(courseDraft.id)} tutorOptions={Array.from(new Set([...tutorOptions.map((tutor) => tutor.name), courseDraft.tutor]))} /></>}
-      <ClassEditorDialog classRecord={classDraft} open={Boolean(classDraft)} onClose={() => setClassDraft(null)} onSave={(values) => void saveClassDraft(values)} tutorOptions={classDraft && !tutorOptions.some((tutor) => tutor.id === classDraft.tutor_id) ? [...tutorOptions, { id: classDraft.tutor_id, name: classDraft.tutor_name ?? overview?.tutor.name ?? 'Current tutor' }] : tutorOptions} />
+      {editTarget?.type === 'course' && courseDraft && <><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 2 }}><Box><Button onClick={() => navigateTo(tutorViewPaths.courses)} sx={{ mb: 1 }}>Back to My Courses</Button><Typography variant="h4">Edit course</Typography><Typography color="text.secondary">Update course details, publishing, requirements, and curriculum.</Typography></Box><Button variant="contained" onClick={() => void saveCourseDraft()} disabled={saving}>Save changes</Button></Stack><CourseEditor course={courseDraft} onChange={setCourseDraft} allowedLessonTypes={getAllowedCourseLessonTypes(courseDraft.id)} tutorOptions={Array.from(new Set([...tutorOptions.map((tutor) => tutor.name), courseDraft.tutor]))} /></>}
+      {editTarget?.type === 'course' && !courseDraft && !loading && <Paper sx={{ p: 3 }}><Typography variant="h6" sx={{ mb: 1 }}>Course not found</Typography><Button onClick={() => navigateTo(tutorViewPaths.courses)}>Back to My Courses</Button></Paper>}
+      {editTarget?.type === 'class' && classDraft && <ClassEditorDialog key={classDraft.id} classRecord={classDraft} open onClose={() => navigateTo(tutorViewPaths.classes)} onSave={(values) => void saveClassDraft(values)} fullPage tutorOptions={tutorOptions.some((tutor) => tutor.id === classDraft.tutor_id) ? tutorOptions : [...tutorOptions, { id: classDraft.tutor_id, name: classDraft.tutor_name ?? overview?.tutor.name ?? 'Current tutor' }]} />}
+      {editTarget?.type === 'class' && !classDraft && !loading && <Paper sx={{ p: 3 }}><Typography variant="h6" sx={{ mb: 1 }}>Class not found</Typography><Button onClick={() => navigateTo(tutorViewPaths.classes)}>Back to My Classes</Button></Paper>}
       {error && view !== 'profile' && <Paper sx={{ p: 2, mb: 2, border: 1, borderColor: 'error.main' }}><Typography color="error">{error}</Typography></Paper>}
       {profileError && view === 'profile' && <Paper sx={{ p: 2, mb: 2, border: 1, borderColor: 'error.main' }}><Typography color="error">{profileError}</Typography></Paper>}
       {view === 'overview' && overview && <>
@@ -486,8 +516,8 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
         <Paper elevation={0} sx={{ mt: 2.25, p: { xs: 2.25, sm: 3 }, borderRadius: 3.5, border: 1, borderColor: 'divider' }}><Typography variant="h6" sx={{ mb: 1, fontWeight: 800 }}>Your teaching assignments</Typography><Typography color="text.secondary">Manage class rosters, attendance, and your profile from the sections above.</Typography><Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 2 }}><Chip icon={<SchoolOutlinedIcon />} label={`${overview.totalCourses} courses`} variant="outlined" /><Chip icon={<ClassOutlinedIcon />} label={`${overview.totalClasses} classes`} variant="outlined" /><Chip icon={<GroupsOutlinedIcon />} label={`${overview.totalStudents} students`} variant="outlined" /></Stack></Paper>
       </>}
       {view === 'schedule' && <TutorScheduleView classes={classes} now={now} />}
-      {view === 'courses' && !progressTarget && <><Box sx={{ mb: 2.5 }}><Typography variant="h4" sx={{ mb: 0.75 }}>My courses</Typography><Typography color="text.secondary">Curriculum and student progress for your assigned courses</Typography></Box><TutorListControls search={courseSearch} onSearch={setCourseSearch} searchPlaceholder="Search courses..." filter={courseFilter} onFilter={setCourseFilter} filterLabel="Course filter" filters={[{ value: 'all', label: 'All Courses' }, { value: 'published', label: 'Published' }, { value: 'draft', label: 'Draft' }]} /><Stack spacing={2.5}>{visibleCourses.length ? visibleCourses.map((course) => <Card key={course.id} elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, transition: 'border-color .18s, box-shadow .18s', '&:hover': { borderColor: 'primary.main', boxShadow: 2 } }}><CardContent sx={{ p: { xs: 2, md: 2.5 }, '&:last-child': { pb: { xs: 2, md: 2.5 } } }}><Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={2.25}><Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1 }}><Box component="img" src={course.cover} alt={`${course.title} thumbnail`} sx={{ width: 96, height: 76, flexShrink: 0, objectFit: 'cover', borderRadius: 2 }} /><Box sx={{ minWidth: 0 }}><Typography sx={{ fontSize: '1.3rem', fontWeight: 700, lineHeight: 1.3, mb: 0.75 }}>{course.title}</Typography><Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center" spacing={0.5}><SchoolOutlinedIcon fontSize="small" /><Typography variant="body2">{course.category}</Typography></Stack><Typography variant="body2">·</Typography><Stack direction="row" alignItems="center" spacing={0.5}><GroupsOutlinedIcon fontSize="small" /><Typography variant="body2">{course.students} students</Typography></Stack></Stack></Box></Box><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ flexShrink: 0, '& .MuiButton-root': { px: 1.75, py: 1 } }}><Button size="small" variant="outlined" startIcon={<AssessmentOutlinedIcon />} onClick={() => setProgressTarget({ type: 'course', id: course.id, title: course.title, modules: course.modules })}>Student Progress</Button><Button size="small" variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => manageCourse(course)}>Edit curriculum</Button></Stack></Stack></CardContent></Card>) : <Typography color="text.secondary">No courses assigned yet.</Typography>}</Stack></>}
-      {view === 'classes' && !progressTarget && <><Box sx={{ mb: 2.5 }}><Typography variant="h4" sx={{ mb: 0.75 }}>My classes</Typography><Typography color="text.secondary">Rosters, attendance, curriculum, and student progress for your assigned classes</Typography></Box><TutorListControls search={classSearch} onSearch={setClassSearch} searchPlaceholder="Search classes..." filter={classFilter} onFilter={setClassFilter} filterLabel="Class filter" filters={[{ value: 'all', label: 'All Classes' }, { value: 'published', label: 'Published' }, { value: 'unpublished', label: 'Unpublished' }]} /><Stack spacing={2.5}>{visibleClasses.length ? visibleClasses.map((classRecord) => <Card key={classRecord.id} elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, transition: 'border-color .18s, box-shadow .18s', '&:hover': { borderColor: 'primary.main', boxShadow: 2 } }}><CardContent sx={{ p: { xs: 2, md: 2.5 }, '&:last-child': { pb: { xs: 2, md: 2.5 } } }}><Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={2.25}><Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontSize: '1.3rem', fontWeight: 700, lineHeight: 1.3, mb: 0.75 }}>{classRecord.title}</Typography><Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center" spacing={0.5}><GroupsOutlinedIcon fontSize="small" /><Typography variant="body2">{classRecord.enrolledCount} enrolled students</Typography></Stack><Typography variant="body2">·</Typography><Typography variant="body2">{classRecord.status}</Typography><Typography variant="body2">·</Typography><Stack direction="row" alignItems="center" spacing={0.5}><CalendarMonthOutlinedIcon fontSize="small" /><Typography variant="body2">{classRecord.schedule.startDate || 'Start date pending'} – {classRecord.schedule.endDate || 'End date pending'}</Typography></Stack></Stack></Box><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ flexShrink: 0, '& .MuiButton-root': { px: 1.5, py: 1 } }}><Button size="small" variant="outlined" startIcon={<AssessmentOutlinedIcon />} onClick={() => { setProgressTarget({ type: 'class', id: classRecord.id, title: classRecord.title, modules: classRecord.modules }); setView('classes') }}>Student Progress</Button><Button size="small" variant="outlined" startIcon={<GroupsOutlinedIcon />} onClick={() => { setSelectedClassId(classRecord.id); setProgressTarget(null); setView('students') }}>Students & attendance</Button><Button size="small" variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => manageClass(classRecord)}>Edit curriculum</Button></Stack></Stack></CardContent></Card>) : <Typography color="text.secondary">No classes assigned yet.</Typography>}</Stack></>}
+      {view === 'courses' && !progressTarget && !editTarget && <><Box sx={{ mb: 2.5 }}><Typography variant="h4" sx={{ mb: 0.75 }}>My courses</Typography><Typography color="text.secondary">Curriculum and student progress for your assigned courses</Typography></Box><TutorListControls search={courseSearch} onSearch={setCourseSearch} searchPlaceholder="Search courses..." filter={courseFilter} onFilter={setCourseFilter} filterLabel="Course filter" filters={[{ value: 'all', label: 'All Courses' }, { value: 'published', label: 'Published' }, { value: 'draft', label: 'Draft' }]} /><Stack spacing={2.5}>{visibleCourses.length ? visibleCourses.map((course) => <Card key={course.id} elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, transition: 'border-color .18s, box-shadow .18s', '&:hover': { borderColor: 'primary.main', boxShadow: 2 } }}><CardContent sx={{ p: { xs: 2, md: 2.5 }, '&:last-child': { pb: { xs: 2, md: 2.5 } } }}><Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={2.25}><Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1 }}><Box component="img" src={course.cover} alt={`${course.title} thumbnail`} sx={{ width: 96, height: 76, flexShrink: 0, objectFit: 'cover', borderRadius: 2 }} /><Box sx={{ minWidth: 0 }}><Typography sx={{ fontSize: '1.3rem', fontWeight: 700, lineHeight: 1.3, mb: 0.75 }}>{course.title}</Typography><Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center" spacing={0.5}><SchoolOutlinedIcon fontSize="small" /><Typography variant="body2">{course.category}</Typography></Stack><Typography variant="body2">·</Typography><Stack direction="row" alignItems="center" spacing={0.5}><GroupsOutlinedIcon fontSize="small" /><Typography variant="body2">{course.students} students</Typography></Stack></Stack></Box></Box><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ flexShrink: 0, '& .MuiButton-root': { px: 1.75, py: 1 } }}><Button size="small" variant="outlined" startIcon={<AssessmentOutlinedIcon />} onClick={() => setProgressTarget({ type: 'course', id: course.id, title: course.title, modules: course.modules })}>Student Progress</Button><Button size="small" variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => manageCourse(course)}>Edit curriculum</Button></Stack></Stack></CardContent></Card>) : <Typography color="text.secondary">No courses assigned yet.</Typography>}</Stack></>}
+      {view === 'classes' && !progressTarget && !editTarget && <><Box sx={{ mb: 2.5 }}><Typography variant="h4" sx={{ mb: 0.75 }}>My classes</Typography><Typography color="text.secondary">Rosters, attendance, curriculum, and student progress for your assigned classes</Typography></Box><TutorListControls search={classSearch} onSearch={setClassSearch} searchPlaceholder="Search classes..." filter={classFilter} onFilter={setClassFilter} filterLabel="Class filter" filters={[{ value: 'all', label: 'All Classes' }, { value: 'published', label: 'Published' }, { value: 'unpublished', label: 'Unpublished' }]} /><Stack spacing={2.5}>{visibleClasses.length ? visibleClasses.map((classRecord) => <Card key={classRecord.id} elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, transition: 'border-color .18s, box-shadow .18s', '&:hover': { borderColor: 'primary.main', boxShadow: 2 } }}><CardContent sx={{ p: { xs: 2, md: 2.5 }, '&:last-child': { pb: { xs: 2, md: 2.5 } } }}><Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={2.25}><Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontSize: '1.3rem', fontWeight: 700, lineHeight: 1.3, mb: 0.75 }}>{classRecord.title}</Typography><Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center" spacing={0.5}><GroupsOutlinedIcon fontSize="small" /><Typography variant="body2">{classRecord.enrolledCount} enrolled students</Typography></Stack><Typography variant="body2">·</Typography><Typography variant="body2">{classRecord.status}</Typography><Typography variant="body2">·</Typography><Stack direction="row" alignItems="center" spacing={0.5}><CalendarMonthOutlinedIcon fontSize="small" /><Typography variant="body2">{classRecord.schedule.startDate || 'Start date pending'} – {classRecord.schedule.endDate || 'End date pending'}</Typography></Stack></Stack></Box><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ flexShrink: 0, '& .MuiButton-root': { px: 1.5, py: 1 } }}><Button size="small" variant="outlined" startIcon={<AssessmentOutlinedIcon />} onClick={() => { setProgressTarget({ type: 'class', id: classRecord.id, title: classRecord.title, modules: classRecord.modules }); setView('classes') }}>Student Progress</Button><Button size="small" variant="outlined" startIcon={<GroupsOutlinedIcon />} onClick={() => { setSelectedClassId(classRecord.id); setProgressTarget(null); setView('students') }}>Students & attendance</Button><Button size="small" variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => manageClass(classRecord)}>Edit curriculum</Button></Stack></Stack></CardContent></Card>) : <Typography color="text.secondary">No classes assigned yet.</Typography>}</Stack></>}
       {progressTarget && <StudentProgressView target={progressTarget} students={students} studentsLoading={studentsLoading} classRanks={classRanks} onBack={() => setProgressTarget(null)} />}
       {view === 'students' && selectedClass && !progressTarget && <StudentsAttendanceView selectedClass={selectedClass} students={students} liveLessons={liveLessons} onMarkAttendance={markAttendance} studentsLoading={studentsLoading} onBack={() => selectView('classes')} />}
       {view === 'students' && !selectedClass && <><Typography variant="h4" sx={{ mb: 3 }}>Students & attendance</Typography><FormControl sx={{ minWidth: { xs: '100%', sm: 360 }, mb: 2 }}><InputLabel>Class</InputLabel><Select label="Class" value={selectedClassId} onChange={(event) => setSelectedClassId(event.target.value as number)}>{classes.map((classRecord) => <MenuItem key={classRecord.id} value={classRecord.id}>{classRecord.title}</MenuItem>)}</Select></FormControl>{selectedClass && <Paper elevation={0} sx={{ p: 2, mb: 2, border: 1, borderColor: 'divider' }}><Typography variant="subtitle2">Join-click reference</Typography><Typography variant="caption" color="text.secondary">A Join Class click is a reference only; select Present or Absent to record attendance.</Typography><Stack spacing={0.5} sx={{ mt: 1 }}>{students.flatMap((student) => liveLessons.filter((lesson) => student.sessionJoinClicks[lesson.id]).map((lesson) => <Typography key={`${student.id}-${lesson.id}`} variant="caption">{student.studentName} · {lesson.title}: {new Date(student.sessionJoinClicks[lesson.id]).toLocaleString()}</Typography>))}</Stack></Paper>}{selectedClass && <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'auto' }}><Box sx={{ minWidth: 700 }}><Stack direction="row" sx={{ p: 2, backgroundColor: 'background.default', fontWeight: 700 }}><Typography sx={{ flex: 1 }}>Student</Typography>{liveLessons.map((lesson) => <Typography key={lesson.id} sx={{ width: 150 }}>{lesson.title}</Typography>)}</Stack><Divider />{students.length ? students.map((student) => <Stack key={student.id} direction="row" alignItems="center" sx={{ p: 2 }}><Box sx={{ flex: 1 }}><Typography>{student.studentName}</Typography><Typography variant="caption" color="text.secondary">{student.studentEmail}</Typography></Box>{liveLessons.map((lesson) => <FormControl key={lesson.id} size="small" sx={{ width: 140 }}><Select value={student.attendance[lesson.id] ?? ''} displayEmpty inputProps={{ 'aria-label': `${student.studentName} attendance for ${lesson.title}` }} onChange={(event) => void markAttendance(student, lesson.id, event.target.value as 'Present' | 'Absent')}><MenuItem value="">Not marked</MenuItem><MenuItem value="Present">Present</MenuItem><MenuItem value="Absent">Absent</MenuItem></Select></FormControl>)}</Stack>) : <Typography color="text.secondary" sx={{ p: 3 }}>No students enrolled in this class.</Typography>}</Box></Paper>}</>}
