@@ -1,3 +1,6 @@
+import Accordion from '@mui/material/Accordion'
+import AccordionDetails from '@mui/material/AccordionDetails'
+import AccordionSummary from '@mui/material/AccordionSummary'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
@@ -148,8 +151,9 @@ export const TutorGradingView = () => {
     <Stack spacing={2.5}>
       {pageGroups.map((group) => {
         const retakes = group.attempts.length - group.results.length
-        return <Paper key={group.key} elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'hidden' }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1.5} sx={{ p: 2.5, backgroundColor: 'background.default' }}>
+        return <Accordion key={group.key} defaultExpanded disableGutters elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden', '&:before': { display: 'none' } }}>
+          <AccordionSummary expandIcon={<KeyboardArrowDownRoundedIcon />} sx={{ px: 2.5, backgroundColor: 'background.default' }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1.5} sx={{ width: '100%', pr: 1 }}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
               <Chip size="small" label={group.contentType === 'class' ? 'Class' : 'Course'} color="primary" variant="outlined" />
               <Typography variant="h6" sx={{ fontWeight: 800 }}>{group.title}</Typography>
@@ -162,7 +166,8 @@ export const TutorGradingView = () => {
               <Chip size="small" label={`Average ${averageBestScore(group.results)}%`} variant="outlined" />
             </Stack>
           </Stack>
-          <Divider />
+          </AccordionSummary>
+          <AccordionDetails sx={{ p: 0 }}>
           {group.visibleResults.map((result, index) => {
             const rowKey = `${group.key}:${result.key}`
             const isExpanded = expandedKey === rowKey
@@ -199,7 +204,8 @@ export const TutorGradingView = () => {
               </Stack>}
             </Box>
           })}
-        </Paper>
+          </AccordionDetails>
+        </Accordion>
       })}
     </Stack>
     {flatRows.length > 0 && <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems="center" spacing={1.5} sx={{ mt: 2.5 }}>
