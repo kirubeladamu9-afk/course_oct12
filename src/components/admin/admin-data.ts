@@ -45,7 +45,10 @@ export interface QuizQuestion {
   topic: string
   options: string[]
   correctOption: number
+  questionImage?: string
+  optionImages?: Array<string | undefined>
   explanation?: string
+  explanationImage?: string
 }
 
 export interface PracticeQuestion {

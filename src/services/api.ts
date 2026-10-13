@@ -72,7 +72,7 @@ interface EnrollmentLesson {
   platformEngineId?: string
   curriculumTopic?: string
   resources?: Array<{ id: number; name: string; url?: string }>
-  quizQuestions?: Array<{ id: number; question: string; options: string[] }>
+  quizQuestions?: Array<{ id: number; question: string; options: string[]; questionImage?: string; optionImages?: Array<string | undefined>; explanation?: string; explanationImage?: string }>
   practiceQuestions?: PracticeLessonQuestion[]
   passThreshold?: number
   meetingUrl?: string
