@@ -2926,6 +2926,7 @@ app.get('/api/tutor/grading/submissions', requireTutor, async (request, response
       contentType: row.contentType,
       contentId: row.contentId,
       contentTitle: row.contentTitle,
+      lessonId: Number(row.lessonId),
       lessonTitle: lesson?.title ?? 'Quiz',
       studentId: row.studentId,
       studentName: row.studentName,

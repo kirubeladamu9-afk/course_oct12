@@ -17,16 +17,30 @@ import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined'
 import { useEffect, useMemo, useState } from 'react'
 import { getTutorQuizSubmissions, type TutorQuizSubmission } from '@/services/api'
 
-type ContentGroup = { key: string; contentType: TutorQuizSubmission['contentType']; title: string; submissions: TutorQuizSubmission[] }
+type LearnerResult = { key: string; studentName: string; studentEmail: string; lessonTitle: string; attempts: TutorQuizSubmission[]; best: TutorQuizSubmission }
+type ContentGroup = { key: string; contentType: TutorQuizSubmission['contentType']; title: string; attempts: TutorQuizSubmission[]; results: LearnerResult[] }
 
 const formatDate = (value: string) => new Date(value).toLocaleString()
 
 const getSubmittedAnswer = (selectedOption: number | null, options: string[]) => selectedOption === null ? 'No answer' : options[selectedOption] ?? 'No answer'
 
-const countQuizTakers = (submissions: TutorQuizSubmission[]) => new Set(submissions.map((submission) => submission.studentId)).size
+const buildResults = (attempts: TutorQuizSubmission[]): LearnerResult[] => {
+  const attemptsByLearnerQuiz = new Map<string, TutorQuizSubmission[]>()
+  for (const attempt of attempts) {
+    const key = `${attempt.studentId}-${attempt.lessonId}`
+    attemptsByLearnerQuiz.set(key, [...(attemptsByLearnerQuiz.get(key) ?? []), attempt])
+  }
+  return [...attemptsByLearnerQuiz.entries()].map(([key, learnerAttempts]) => {
+    const newestFirst = [...learnerAttempts].sort((first, second) => new Date(second.submittedAt).getTime() - new Date(first.submittedAt).getTime())
+    const best = newestFirst.reduce((top, current) => current.score > top.score ? current : top, newestFirst[0])
+    return { key, studentName: best.studentName, studentEmail: best.studentEmail, lessonTitle: best.lessonTitle, attempts: newestFirst, best }
+  })
+}
 
-const averageScore = (submissions: TutorQuizSubmission[]) => submissions.length
-  ? Math.round(submissions.reduce((total, submission) => total + submission.score, 0) / submissions.length)
+const countUniqueStudents = (attempts: TutorQuizSubmission[]) => new Set(attempts.map((attempt) => attempt.studentId)).size
+
+const averageBestScore = (results: LearnerResult[]) => results.length
+  ? Math.round(results.reduce((total, result) => total + result.best.score, 0) / results.length)
   : 0
 
 const SummaryCard = ({ label, value }: { label: string; value: number }) => <Paper elevation={0} sx={{ flex: 1, p: 2, border: 1, borderColor: 'divider' }}>
@@ -40,7 +54,8 @@ export const TutorGradingView = () => {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState('all')
-  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const [selectedAttemptId, setSelectedAttemptId] = useState<number | null>(null)
 
   const loadSubmissions = async (background = false) => {
     if (!background) setLoading(true)
@@ -67,38 +82,44 @@ export const TutorGradingView = () => {
   }, [])
 
   const groups = useMemo<ContentGroup[]>(() => {
-    const byKey = new Map<string, ContentGroup>()
+    const byKey = new Map<string, TutorQuizSubmission[]>()
     for (const submission of submissions) {
       const key = `${submission.contentType}-${submission.contentId}`
-      const group = byKey.get(key) ?? { key, contentType: submission.contentType, title: submission.contentTitle, submissions: [] }
-      group.submissions.push(submission)
-      byKey.set(key, group)
+      byKey.set(key, [...(byKey.get(key) ?? []), submission])
     }
-    return [...byKey.values()].sort((first, second) => first.title.localeCompare(second.title))
+    return [...byKey.entries()]
+      .map(([key, attempts]) => ({ key, contentType: attempts[0].contentType, title: attempts[0].contentTitle, attempts, results: buildResults(attempts) }))
+      .sort((first, second) => first.title.localeCompare(second.title))
   }, [submissions])
 
+  const allResults = useMemo(() => buildResults(submissions), [submissions])
   const query = search.trim().toLowerCase()
   const visibleGroups = groups
     .filter((group) => groupFilter === 'all' || group.key === groupFilter)
     .map((group) => ({
       ...group,
-      visible: group.submissions.filter((submission) => `${submission.studentName} ${submission.studentEmail} ${submission.lessonTitle} ${submission.contentTitle}`.toLowerCase().includes(query)),
+      visibleResults: group.results.filter((result) => `${result.studentName} ${result.studentEmail} ${result.lessonTitle} ${group.title}`.toLowerCase().includes(query)),
     }))
-    .filter((group) => group.visible.length > 0)
+    .filter((group) => group.visibleResults.length > 0)
+
+  const toggleResult = (rowKey: string) => {
+    setExpandedKey(expandedKey === rowKey ? null : rowKey)
+    setSelectedAttemptId(null)
+  }
 
   return <>
     <Box sx={{ mb: 2.5 }}>
       <Typography variant="h4" sx={{ mb: 0.75 }}>Grading</Typography>
-      <Typography color="text.secondary">Quizzes are graded automatically. Review each student&apos;s submitted answers against the correct answers, grouped by course or class.</Typography>
+      <Typography color="text.secondary">Quizzes are graded automatically. Each learner&apos;s retakes are grouped under one result per quiz, showing their best score.</Typography>
     </Box>
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2.5 }}>
-      <SummaryCard label="Total submissions" value={submissions.length} />
-      <SummaryCard label="Quiz takers" value={countQuizTakers(submissions)} />
+      <SummaryCard label="Quiz results" value={allResults.length} />
+      <SummaryCard label="Quiz takers" value={countUniqueStudents(submissions)} />
       <SummaryCard label="Courses" value={groups.filter((group) => group.contentType === 'course').length} />
       <SummaryCard label="Classes" value={groups.filter((group) => group.contentType === 'class').length} />
     </Stack>
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 3 }}>
-      <TextField fullWidth value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search student, course, or quiz..." inputProps={{ 'aria-label': 'Search submissions' }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchOutlinedIcon color="action" /></InputAdornment> }} sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }} />
+      <TextField fullWidth value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search student, course, or quiz..." inputProps={{ 'aria-label': 'Search results' }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchOutlinedIcon color="action" /></InputAdornment> }} sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }} />
       <FormControl sx={{ minWidth: { xs: '100%', sm: 260 } }}>
         <Select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} startAdornment={<InputAdornment position="start"><FilterListOutlinedIcon color="action" /></InputAdornment>} IconComponent={KeyboardArrowDownRoundedIcon} inputProps={{ 'aria-label': 'Course or class filter' }} sx={{ borderRadius: 2.5, height: 56 }}>
           <MenuItem value="all">All courses and classes</MenuItem>
@@ -107,51 +128,64 @@ export const TutorGradingView = () => {
       </FormControl>
     </Stack>
     {error && <Paper sx={{ p: 2, mb: 2, border: 1, borderColor: 'error.main' }}><Typography color="error">{error}</Typography></Paper>}
-    {loading && <Stack direction="row" spacing={1} alignItems="center"><CircularProgress size={20} aria-label="Loading submissions" /><Typography color="text.secondary">Loading submissions...</Typography></Stack>}
-    {!loading && visibleGroups.length === 0 && <Typography color="text.secondary">No quiz submissions match these filters.</Typography>}
+    {loading && <Stack direction="row" spacing={1} alignItems="center"><CircularProgress size={20} aria-label="Loading results" /><Typography color="text.secondary">Loading results...</Typography></Stack>}
+    {!loading && visibleGroups.length === 0 && <Typography color="text.secondary">No quiz results match these filters.</Typography>}
     <Stack spacing={2.5}>
-      {visibleGroups.map((group) => <Paper key={group.key} elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'hidden' }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1.5} sx={{ p: 2.5, backgroundColor: 'background.default' }}>
-          <Box sx={{ minWidth: 0 }}>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+      {visibleGroups.map((group) => {
+        const retakes = group.attempts.length - group.results.length
+        return <Paper key={group.key} elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'hidden' }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1.5} sx={{ p: 2.5, backgroundColor: 'background.default' }}>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
               <Chip size="small" label={group.contentType === 'class' ? 'Class' : 'Course'} color="primary" variant="outlined" />
               <Typography variant="h6" sx={{ fontWeight: 800 }}>{group.title}</Typography>
             </Stack>
-          </Box>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            <Chip size="small" label={`${group.submissions.length} submissions`} variant="outlined" />
-            <Chip size="small" label={`${countQuizTakers(group.submissions)} quiz takers`} variant="outlined" />
-            <Chip size="small" label={`${group.submissions.filter((submission) => submission.passed).length} passed`} color="success" variant="outlined" />
-            <Chip size="small" label={`Average ${averageScore(group.submissions)}%`} variant="outlined" />
-          </Stack>
-        </Stack>
-        <Divider />
-        {group.visible.map((submission, index) => <Box key={submission.id}>
-          {index > 0 && <Divider />}
-          <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={1.5} sx={{ p: 2.5 }}>
-            <Box sx={{ minWidth: 0, flex: 1 }}>
-              <Typography sx={{ fontWeight: 700 }}>{submission.studentName}</Typography>
-              <Typography variant="body2" color="text.secondary">{submission.studentEmail}</Typography>
-              <Typography variant="body2" color="text.secondary">{submission.lessonTitle} · Submitted {formatDate(submission.submittedAt)}</Typography>
-            </Box>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Chip size="small" label={`${submission.score}%`} variant="outlined" />
-              <Chip size="small" label={submission.passed ? 'Passed' : 'Not passed'} color={submission.passed ? 'success' : 'error'} variant="outlined" />
-              <Button variant="outlined" onClick={() => setExpandedId(expandedId === submission.id ? null : submission.id)}>{expandedId === submission.id ? 'Hide answers' : 'View answers'}</Button>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Chip size="small" label={`${group.results.length} quiz results`} variant="outlined" />
+              <Chip size="small" label={`${countUniqueStudents(group.attempts)} quiz takers`} variant="outlined" />
+              <Chip size="small" label={`${retakes} retakes`} variant="outlined" />
+              <Chip size="small" label={`${group.results.filter((result) => result.best.passed).length} passed`} color="success" variant="outlined" />
+              <Chip size="small" label={`Average ${averageBestScore(group.results)}%`} variant="outlined" />
             </Stack>
           </Stack>
-          {expandedId === submission.id && <Stack spacing={1.5} sx={{ px: 2.5, pb: 2.5 }}>
-            {submission.questions.map((question, questionIndex) => <Paper key={question.id} elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider' }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2} sx={{ mb: 1 }}>
-                <Typography sx={{ fontWeight: 700 }}>{questionIndex + 1}. {question.question}</Typography>
-                <Chip size="small" label={question.isCorrect ? 'Correct' : 'Incorrect'} color={question.isCorrect ? 'success' : 'error'} variant="outlined" />
+          <Divider />
+          {group.visibleResults.map((result, index) => {
+            const rowKey = `${group.key}:${result.key}`
+            const isExpanded = expandedKey === rowKey
+            const shownAttempt = result.attempts.find((attempt) => attempt.id === selectedAttemptId) ?? result.attempts[0]
+            return <Box key={rowKey}>
+              {index > 0 && <Divider />}
+              <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={1.5} sx={{ p: 2.5 }}>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography sx={{ fontWeight: 700 }}>{result.studentName}</Typography>
+                  <Typography variant="body2" color="text.secondary">{result.studentEmail}</Typography>
+                  <Typography variant="body2" color="text.secondary">{result.lessonTitle} · Latest attempt {formatDate(result.attempts[0].submittedAt)}</Typography>
+                </Box>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  {result.attempts.length > 1 && <Chip size="small" label={`${result.attempts.length} attempts`} variant="outlined" />}
+                  <Chip size="small" label={`Best ${result.best.score}%`} variant="outlined" />
+                  <Chip size="small" label={result.best.passed ? 'Passed' : 'Not passed'} color={result.best.passed ? 'success' : 'error'} variant="outlined" />
+                  <Button variant="outlined" onClick={() => toggleResult(rowKey)}>{isExpanded ? 'Hide attempts' : 'View attempts'}</Button>
+                </Stack>
               </Stack>
-              <Typography variant="body2"><Box component="span" sx={{ fontWeight: 700 }}>Submitted answer:</Box> {getSubmittedAnswer(question.selectedOption, question.options)}</Typography>
-              <Typography variant="body2"><Box component="span" sx={{ fontWeight: 700 }}>Correct answer:</Box> {question.options[question.correctOption]}</Typography>
-            </Paper>)}
-          </Stack>}
-        </Box>)}
-      </Paper>)}
+              {isExpanded && <Stack spacing={1.5} sx={{ px: 2.5, pb: 2.5 }}>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  {result.attempts.map((attempt, attemptIndex) => <Button key={attempt.id} size="small" variant={attempt.id === shownAttempt.id ? 'contained' : 'outlined'} onClick={() => setSelectedAttemptId(attempt.id)}>
+                    Attempt {result.attempts.length - attemptIndex} · {attempt.score}% · {formatDate(attempt.submittedAt)}
+                  </Button>)}
+                </Stack>
+                {shownAttempt.questions.map((question, questionIndex) => <Paper key={question.id} elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider' }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2} sx={{ mb: 1 }}>
+                    <Typography sx={{ fontWeight: 700 }}>{questionIndex + 1}. {question.question}</Typography>
+                    <Chip size="small" label={question.isCorrect ? 'Correct' : 'Incorrect'} color={question.isCorrect ? 'success' : 'error'} variant="outlined" />
+                  </Stack>
+                  <Typography variant="body2"><Box component="span" sx={{ fontWeight: 700 }}>Submitted answer:</Box> {getSubmittedAnswer(question.selectedOption, question.options)}</Typography>
+                  <Typography variant="body2"><Box component="span" sx={{ fontWeight: 700 }}>Correct answer:</Box> {question.options[question.correctOption]}</Typography>
+                </Paper>)}
+              </Stack>}
+            </Box>
+          })}
+        </Paper>
+      })}
     </Stack>
   </>
 }

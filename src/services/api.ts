@@ -635,6 +635,7 @@ export interface TutorQuizSubmission {
   contentType: 'course' | 'class'
   contentId: number
   contentTitle: string
+  lessonId: number
   lessonTitle: string
   studentId: number
   studentName: string
