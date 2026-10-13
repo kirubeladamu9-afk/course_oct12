@@ -28,6 +28,7 @@ import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined'
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined'
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
+import AssignmentTurnedInOutlinedIcon from '@mui/icons-material/AssignmentTurnedInOutlined'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import FilterListOutlinedIcon from '@mui/icons-material/FilterListOutlined'
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded'
@@ -42,6 +43,7 @@ import { ClassEditorDialog, type AdminClass as AdminClassEditorRecord, type Clas
 import ScheduleCalendar, { type ScheduleSession } from '@/components/schedule-calendar'
 import { getAuthenticatedUser, getClassLeaderboard, getTutorAtRiskStudents, getTutorClasses, getTutorClassStudents, getTutorCourses, getTutorCourseStudents, getTutorEditOptions, getTutorOverview, saveAuthenticatedUser, updateTutorClass, updateTutorClassAttendance, updateTutorCourse, updateTutorProfile, type AtRiskStudent, type TutorClass, type TutorClassStudent, type TutorOverview } from '@/services/api'
 import AtRiskStudentsPanel from '@/components/at-risk-students-panel'
+import { TutorGradingView } from '@/components/tutor/tutor-grading-view'
 import { type AdminCourse, type AdminModule } from '@/components/admin/admin-data'
 import { navigateTo } from '@/lib/navigation'
 import { SITE_NAME } from '@/lib/site'
@@ -50,7 +52,7 @@ import { toast } from '@/components/toast'
 import { signOut } from '@/services/api'
 import { Logo } from '@/components/logo'
 
-type View = 'overview' | 'schedule' | 'courses' | 'classes' | 'students' | 'profile'
+type View = 'overview' | 'schedule' | 'courses' | 'classes' | 'students' | 'grading' | 'profile'
 type ProgressTarget = { type: 'course' | 'class'; id: number; title: string; modules: AdminModule[] }
 
 const tutorViewPaths: Record<View, string> = {
@@ -59,6 +61,7 @@ const tutorViewPaths: Record<View, string> = {
   courses: '/tutor/courses',
   classes: '/tutor/classes',
   students: '/tutor/students',
+  grading: '/tutor/grading',
   profile: '/tutor/profile',
 }
 
@@ -383,7 +386,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
   const visibleClasses = classes.filter((classRecord) => `${classRecord.title} ${classRecord.programId} ${classRecord.courseTitle ?? ''}`.toLowerCase().includes(classSearch.trim().toLowerCase()) && (classFilter === 'all' || (classFilter === 'published' ? classRecord.published : !classRecord.published)))
   const liveLessons = useMemo(() => selectedClass?.modules.flatMap((module) => module.lessons).filter((lesson) => lesson.type === 'live') ?? [], [selectedClass])
   const editTarget = getTutorEditTargetFromPath(currentPath)
-  const pageTitle = editTarget?.type === 'course' ? 'Edit Course' : editTarget?.type === 'class' ? 'Edit Class' : progressTarget ? 'Student Progress' : view === 'overview' ? 'Overview' : view === 'schedule' ? 'Schedule' : view === 'courses' ? 'My Courses' : view === 'classes' ? 'My Classes' : view === 'students' ? 'Students & Attendance' : 'Profile'
+  const pageTitle = editTarget?.type === 'course' ? 'Edit Course' : editTarget?.type === 'class' ? 'Edit Class' : progressTarget ? 'Student Progress' : view === 'overview' ? 'Overview' : view === 'schedule' ? 'Schedule' : view === 'courses' ? 'My Courses' : view === 'classes' ? 'My Classes' : view === 'students' ? 'Students & Attendance' : view === 'grading' ? 'Grading' : 'Profile'
 
   useEffect(() => {
     document.title = `${SITE_NAME} | ${pageTitle}`
@@ -497,6 +500,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
       {navButton('courses', 'My Courses', <SchoolOutlinedIcon fontSize="small" />)}
       {navButton('classes', 'My Classes', <ClassOutlinedIcon fontSize="small" />)}
       {navButton('students', 'Students & Attendance', <GroupsOutlinedIcon fontSize="small" />)}
+      {navButton('grading', 'Grading', <AssignmentTurnedInOutlinedIcon fontSize="small" />)}
       <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mt: 2.25, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Account</Typography>
       {navButton('profile', 'Profile', <PersonOutlineIcon fontSize="small" />)}
     </Box>
@@ -549,6 +553,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
         <Paper elevation={0} sx={{ mt: 2.25, p: { xs: 2.25, sm: 3 }, borderRadius: 3.5, border: 1, borderColor: 'divider' }}><Typography variant="h6" sx={{ mb: 1, fontWeight: 800 }}>Your teaching assignments</Typography><Typography color="text.secondary">Manage class rosters, attendance, and your profile from the sections above.</Typography><Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 2 }}><Chip icon={<SchoolOutlinedIcon />} label={`${overview.totalCourses} courses`} variant="outlined" /><Chip icon={<ClassOutlinedIcon />} label={`${overview.totalClasses} classes`} variant="outlined" /><Chip icon={<GroupsOutlinedIcon />} label={`${overview.totalStudents} students`} variant="outlined" /></Stack></Paper>
       </>}
       {view === 'schedule' && <TutorScheduleView classes={classes} now={now} />}
+      {view === 'grading' && <TutorGradingView />}
       {view === 'courses' && !progressTarget && !editTarget && <><Box sx={{ mb: 2.5 }}><Typography variant="h4" sx={{ mb: 0.75 }}>My courses</Typography><Typography color="text.secondary">Curriculum and student progress for your assigned courses</Typography></Box><TutorListControls search={courseSearch} onSearch={setCourseSearch} searchPlaceholder="Search courses..." filter={courseFilter} onFilter={setCourseFilter} filterLabel="Course filter" filters={[{ value: 'all', label: 'All Courses' }, { value: 'published', label: 'Published' }, { value: 'draft', label: 'Draft' }]} /><Stack spacing={2.5}>{visibleCourses.length ? visibleCourses.map((course) => <Card key={course.id} elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, transition: 'border-color .18s, box-shadow .18s', '&:hover': { borderColor: 'primary.main', boxShadow: 2 } }}><CardContent sx={{ p: { xs: 2, md: 2.5 }, '&:last-child': { pb: { xs: 2, md: 2.5 } } }}><Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={2.25}><Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1 }}><Box component="img" src={course.cover} alt={`${course.title} thumbnail`} sx={{ width: 96, height: 76, flexShrink: 0, objectFit: 'cover', borderRadius: 2 }} /><Box sx={{ minWidth: 0 }}><Typography sx={{ fontSize: '1.3rem', fontWeight: 700, lineHeight: 1.3, mb: 0.75 }}>{course.title}</Typography><Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center" spacing={0.5}><SchoolOutlinedIcon fontSize="small" /><Typography variant="body2">{course.category}</Typography></Stack><Typography variant="body2">·</Typography><Stack direction="row" alignItems="center" spacing={0.5}><GroupsOutlinedIcon fontSize="small" /><Typography variant="body2">{course.students} students</Typography></Stack></Stack></Box></Box><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ flexShrink: 0, '& .MuiButton-root': { px: 1.75, py: 1 } }}><Button size="small" variant="outlined" startIcon={<AssessmentOutlinedIcon />} onClick={() => setProgressTarget({ type: 'course', id: course.id, title: course.title, modules: course.modules })}>Student Progress</Button><Button size="small" variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => manageCourse(course)}>Edit curriculum</Button></Stack></Stack></CardContent></Card>) : <Typography color="text.secondary">No courses assigned yet.</Typography>}</Stack></>}
       {view === 'classes' && !progressTarget && !editTarget && <><Box sx={{ mb: 2.5 }}><Typography variant="h4" sx={{ mb: 0.75 }}>My classes</Typography><Typography color="text.secondary">Rosters, attendance, curriculum, and student progress for your assigned classes</Typography></Box><TutorListControls search={classSearch} onSearch={setClassSearch} searchPlaceholder="Search classes..." filter={classFilter} onFilter={setClassFilter} filterLabel="Class filter" filters={[{ value: 'all', label: 'All Classes' }, { value: 'published', label: 'Published' }, { value: 'unpublished', label: 'Unpublished' }]} /><Stack spacing={2.5}>{visibleClasses.length ? visibleClasses.map((classRecord) => <Card key={classRecord.id} elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, transition: 'border-color .18s, box-shadow .18s', '&:hover': { borderColor: 'primary.main', boxShadow: 2 } }}><CardContent sx={{ p: { xs: 2, md: 2.5 }, '&:last-child': { pb: { xs: 2, md: 2.5 } } }}><Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={2.25}><Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontSize: '1.3rem', fontWeight: 700, lineHeight: 1.3, mb: 0.75 }}>{classRecord.title}</Typography><Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center" spacing={0.5}><GroupsOutlinedIcon fontSize="small" /><Typography variant="body2">{classRecord.enrolledCount} enrolled students</Typography></Stack><Typography variant="body2">·</Typography><Typography variant="body2">{classRecord.status}</Typography><Typography variant="body2">·</Typography><Stack direction="row" alignItems="center" spacing={0.5}><CalendarMonthOutlinedIcon fontSize="small" /><Typography variant="body2">{classRecord.schedule.startDate || 'Start date pending'} – {classRecord.schedule.endDate || 'End date pending'}</Typography></Stack></Stack></Box><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ flexShrink: 0, '& .MuiButton-root': { px: 1.5, py: 1 } }}><Button size="small" variant="outlined" startIcon={<AssessmentOutlinedIcon />} onClick={() => { setProgressTarget({ type: 'class', id: classRecord.id, title: classRecord.title, modules: classRecord.modules }); setView('classes') }}>Student Progress</Button><Button size="small" variant="outlined" startIcon={<GroupsOutlinedIcon />} onClick={() => { setSelectedClassId(classRecord.id); setProgressTarget(null); setView('students') }}>Students & attendance</Button><Button size="small" variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => manageClass(classRecord)}>Edit curriculum</Button></Stack></Stack></CardContent></Card>) : <Typography color="text.secondary">No classes assigned yet.</Typography>}</Stack></>}
       {activeProgressTarget && <StudentProgressView target={activeProgressTarget} students={students} studentsLoading={studentsLoading} classRanks={classRanks} onBack={() => setProgressTarget(null)} />}
