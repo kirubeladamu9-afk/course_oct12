@@ -52,9 +52,9 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
   }
 
   return <Box sx={{ background: 'var(--app-auth-backdrop)', backgroundColor: 'background.default', height: 'calc(100vh - 88px)', minHeight: 0, display: 'flex', alignItems: 'center', overflow: 'hidden', boxSizing: 'border-box', py: { xs: 1, md: 2 } }}>
-    <Container maxWidth="lg" sx={{ maxHeight: '100%', display: 'flex', alignItems: 'center' }}>
-      <Paper elevation={8} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 0.9fr) minmax(0, 1.1fr)' }, maxWidth: 1080, maxHeight: '100%', minHeight: 0, mx: 'auto', overflow: 'hidden', borderRadius: { xs: 3, md: 5 } }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', p: { xs: 1.5, sm: 3, md: 4 }, pb: { xs: 3, sm: 4, md: 5 }, color: 'common.white', background: 'var(--app-auth-panel)', minHeight: 0 }}>
+    <Container maxWidth="lg" sx={{ maxHeight: '100%', display: 'flex', alignItems: 'center', px: { xs: 2, sm: 2, md: 3 } }}>
+      <Paper elevation={8} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 0.9fr) minmax(0, 1.1fr)' }, width: { xs: '100%', md: 'auto' }, boxSizing: 'border-box', maxWidth: 1080, maxHeight: '100%', minHeight: 0, mx: 'auto', overflow: 'hidden', borderRadius: { xs: 3, md: 5 } }}>
+        <Box sx={{ display: { xs: 'none', md: 'flex' }, flexDirection: 'column', justifyContent: 'space-between', p: { xs: 1.5, sm: 3, md: 4 }, pb: { xs: 3, sm: 4, md: 5 }, color: 'common.white', background: 'var(--app-auth-panel)', minHeight: 0 }}>
           <Box>
             <Typography variant="overline" sx={{ letterSpacing: 1.2, color: 'rgba(255,255,255,0.72)' }}>Coursesharp learning platform</Typography>
             <Typography component="h2" sx={{ mt: { xs: 1, md: 5 }, fontSize: { xs: '1.9rem', md: '3.5rem' }, lineHeight: 0.98, letterSpacing: '-0.06em', fontWeight: 700 }}>
@@ -68,7 +68,7 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
           </Box>
           <Box component="img" src="/images/home-hero.png" alt="Learner studying with Coursesharp" sx={{ display: 'block', alignSelf: 'center', width: { xs: '86%', sm: '82%', md: '86%' }, height: 'auto', maxHeight: { xs: 48, sm: 120, md: 180 }, mt: { xs: 1, md: 2 }, objectFit: 'contain', objectPosition: 'center bottom' }} />
         </Box>
-        <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 0, p: { xs: 1.5, sm: 3.5, md: 5 }, backgroundColor: 'background.paper' }}>
+        <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 0, p: { xs: 2, sm: 2.5, md: 5 }, backgroundColor: 'background.paper' }}>
           {isRedirecting ? (
             <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }} aria-live="polite">
               <CircularProgress aria-label="Signing in" />
@@ -76,14 +76,14 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
             </Box>
           ) : (
             <>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: { xs: 2, md: 5 } }}>
-                <Typography sx={{ fontSize: '1.25rem', fontWeight: 700, '& span': { color: 'primary.main' } }}>Course<span>sharp</span></Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: { xs: 'flex-end', md: 'space-between' }, gap: 1, mb: { xs: 1.5, sm: 2, md: 5 } }}>
+                <Typography sx={{ display: { xs: 'none', md: 'block' }, fontSize: '1.25rem', fontWeight: 700, '& span': { color: 'primary.main' } }}>Course<span>sharp</span></Typography>
                 <Typography variant="body2" color="text.secondary">{isSignUp ? 'Already learning with us?' : 'Secure account access'}</Typography>
               </Box>
               <Box sx={{ maxWidth: 430, width: '100%', mx: 'auto', flex: 1 }}>
-                <Typography component="h1" variant="h2" sx={{ mb: 0.75, fontSize: { xs: '2.1rem', md: '3rem' }, letterSpacing: '-0.05em' }}>{isSignUp ? 'Sign Up' : 'Sign In'}</Typography>
-                <Typography color="text.secondary" sx={{ mb: { xs: 2, md: 2.5 } }}>{isSignUp ? 'Create your Coursesharp account.' : 'Welcome back to Coursesharp.'}</Typography>
-                <Box sx={{ display: 'grid', gap: 1.5 }}>
+                <Typography component="h1" variant="h2" sx={{ mb: 0.75, fontSize: { xs: '2rem', md: '3rem' }, letterSpacing: '-0.05em' }}>{isSignUp ? 'Sign Up' : 'Sign In'}</Typography>
+                <Typography color="text.secondary" sx={{ mb: { xs: 1.5, md: 2.5 } }}>{isSignUp ? 'Create your Coursesharp account.' : 'Welcome back to Coursesharp.'}</Typography>
+                <Box sx={{ display: 'grid', gap: { xs: 1.25, md: 1.5 } }}>
                   <TextField required fullWidth label="Email" name="email" type="email" autoComplete="email" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 999 } }} />
                   <TextField
                     required
@@ -108,12 +108,12 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
                   {!isSignUp && <Typography variant="body2" sx={{ mt: -0.75, color: 'text.secondary' }}>
                     Forgot your password? <Link href="mailto:support@coursespace.com" underline="hover">Contact support@coursespace.com</Link> for help.
                   </Typography>}
-                  <Box sx={{ mt: 0.5, '& button': { width: '100%', justifyContent: 'center', borderRadius: 999, py: 1.1 } }}>
+                  <Box sx={{ mt: { xs: 0.25, md: 0.5 }, '& button': { width: '100%', justifyContent: 'center', borderRadius: 999, py: 1.1 } }}>
                     <StyledButton type="submit" color="primary">{isSignUp ? 'Sign Up' : 'Sign In'}</StyledButton>
                   </Box>
                 </Box>
               </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mt: { xs: 2, md: 5 } }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mt: { xs: 1.5, sm: 2, md: 5 } }}>
                 <Typography variant="caption" color="text.secondary">© {new Date().getFullYear()} Coursesharp</Typography>
                 <Link href="/contact-us" underline="hover" variant="caption" color="text.secondary">Contact Us</Link>
               </Box>
