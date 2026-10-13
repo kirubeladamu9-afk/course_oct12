@@ -729,8 +729,6 @@ const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
   useEffect(() => {
     void reloadOverview()
     void reloadAtRisk()
-    const timer = window.setInterval(() => { void reloadAtRisk() }, 30000)
-    return () => window.clearInterval(timer)
   }, [])
 
   return <>
