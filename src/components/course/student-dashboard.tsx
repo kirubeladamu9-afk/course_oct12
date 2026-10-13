@@ -117,6 +117,7 @@ const getQuestionSeconds = (question: QuizQuestion) => {
   if (/essay|file|upload/.test(kind)) return 900
   return 90
 }
+const getQuizTimeLimitSeconds = (questions: QuizQuestion[]) => questions.reduce((total, question) => total + getQuestionSeconds(question), 0)
 const formatQuizCountdown = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 
  interface DashboardLesson {
@@ -827,10 +828,14 @@ const LessonResources: FC<{ resources: DashboardLesson['resources'] }> = ({ reso
 
 const QuizLessonView: FC<{ lesson: DashboardLesson; attempt: QuizAttempt | null; onBegin: () => Promise<QuizAttempt | null>; onSave: (questionId: number, answer: QuizAnswerRecord) => Promise<void>; onSubmit: (answers: Record<number, QuizAnswerRecord>, disqualified?: boolean) => Promise<DashboardQuizResult | null>; onViolation: (violation: QuizViolation) => Promise<void>; onActiveChange: (active: boolean) => void; result: DashboardQuizResult | null; passingScore: number; strikeThreshold: number }> = ({ lesson, attempt, onBegin, onSave, onSubmit, onViolation, onActiveChange, result, passingScore, strikeThreshold }) => {
   const questions = lesson.quizQuestions ?? []
+  const quizTimeLimitSeconds = getQuizTimeLimitSeconds(questions)
   const [current, setCurrent] = useState(0)
   const [answers, setAnswers] = useState<Record<number, QuizAnswerRecord>>({})
   const answersRef = useRef<Record<number, QuizAnswerRecord>>({})
-  const [secondsLeft, setSecondsLeft] = useState(questions[0] ? getQuestionSeconds(questions[0]) : 0)
+  const restoredAttemptIdRef = useRef<number | null>(null)
+  const [deadline, setDeadline] = useState<number | null>(null)
+  const answerSaveQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const [secondsLeft, setSecondsLeft] = useState(quizTimeLimitSeconds)
   const [locked, setLocked] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const submittingRef = useRef(false)
@@ -842,16 +847,17 @@ const QuizLessonView: FC<{ lesson: DashboardLesson; attempt: QuizAttempt | null;
   }, [attempt])
 
   useEffect(() => {
-    if (!attempt) return
+    if (!attempt || restoredAttemptIdRef.current === attempt.id) return
+    restoredAttemptIdRef.current = attempt.id
     const saved = attempt.answers ?? {}
     const restoredAnswers = Object.fromEntries(questions.map((question) => [question.id, saved[question.id] ?? { status: 'unanswered', value: null }]))
     answersRef.current = restoredAnswers
     setAnswers(restoredAnswers)
-  }, [attempt, questions])
-  useEffect(() => {
-    setSecondsLeft(questions[current] ? getQuestionSeconds(questions[current]) : 0)
+    const attemptDeadline = Date.parse(attempt.startedAt) + quizTimeLimitSeconds * 1000
+    setDeadline(attemptDeadline)
+    setSecondsLeft(Math.max(0, Math.ceil((attemptDeadline - Date.now()) / 1000)))
     setLocked(false)
-  }, [current, questions])
+  }, [attempt, questions, quizTimeLimitSeconds])
 
   const updateAnswer = useCallback((questionId: number, answer: QuizAnswerRecord) => {
     const nextAnswers = { ...answersRef.current, [questionId]: answer }
@@ -860,42 +866,36 @@ const QuizLessonView: FC<{ lesson: DashboardLesson; attempt: QuizAttempt | null;
     return nextAnswers
   }, [])
 
-  const saveCurrentAnswer = useCallback(async (status: 'answered' | 'expired') => {
-    const question = questions[current]
-    if (!attempt || !question) return null
-    const answer = { ...(answersRef.current[question.id] ?? { value: null }), status } satisfies QuizAnswerRecord
-    updateAnswer(question.id, answer)
-    await onSave(question.id, answer)
-    return answersRef.current
-  }, [attempt, current, onSave, questions, updateAnswer])
+  const persistAnswer = useCallback((questionId: number, answer: QuizAnswerRecord) => {
+    const nextSave = answerSaveQueueRef.current.then(() => onSave(questionId, answer))
+    answerSaveQueueRef.current = nextSave.catch(() => undefined)
+    return answerSaveQueueRef.current
+  }, [onSave])
 
   useEffect(() => {
-    if (!attempt || locked || !questions[current]) return
-    const timer = window.setInterval(() => setSecondsLeft((value) => Math.max(0, value - 1)), 1000)
+    if (!attempt || locked || deadline === null) return
+    const updateCountdown = () => setSecondsLeft(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)))
+    updateCountdown()
+    const timer = window.setInterval(updateCountdown, 1000)
     return () => window.clearInterval(timer)
-  }, [attempt, current, locked, questions])
+  }, [attempt?.id, deadline, locked])
   useEffect(() => {
-    if (secondsLeft !== 0 || locked || !attempt || !questions[current]) return
-    const isFinalQuestion = current === questions.length - 1
+    if (secondsLeft !== 0 || locked || !attempt) return
     setLocked(true)
-    if (isFinalQuestion) {
-      submittingRef.current = true
-      setSubmitting(true)
-    }
-    void saveCurrentAnswer('expired').then(async (savedAnswers) => {
-      if (!savedAnswers) return
-      if (!isFinalQuestion) {
-        setCurrent((index) => index + 1)
-        return
-      }
-      await onSubmit(Object.fromEntries(questions.map((item) => [item.id, savedAnswers[item.id] ?? { status: 'unanswered', value: null }])))
-    }).finally(() => {
-      if (isFinalQuestion) {
-        submittingRef.current = false
-        setSubmitting(false)
-      }
+    submittingRef.current = true
+    setSubmitting(true)
+    const expiredAnswers: Record<number, QuizAnswerRecord> = {}
+    questions.forEach((question) => {
+      const answer = answersRef.current[question.id] ?? { status: 'unanswered', value: null }
+      expiredAnswers[question.id] = answer.status === 'answered' ? answer : { ...answer, status: 'expired' }
     })
-  }, [secondsLeft, locked, attempt, current, onSubmit, questions, saveCurrentAnswer])
+    answersRef.current = expiredAnswers
+    setAnswers(expiredAnswers)
+    void onSubmit(expiredAnswers).finally(() => {
+      submittingRef.current = false
+      setSubmitting(false)
+    })
+  }, [secondsLeft, locked, attempt, onSubmit, questions])
 
   useEffect(() => {
     if (!attempt) return
@@ -956,8 +956,16 @@ const QuizLessonView: FC<{ lesson: DashboardLesson; attempt: QuizAttempt | null;
   const selectAnswer = (value: string | number | string[] | null) => {
     const question = questions[current]
     if (!question || locked) return
-    updateAnswer(question.id, { status: 'answered', value })
-    void saveCurrentAnswer('answered')
+    const answer = { status: 'answered', value } satisfies QuizAnswerRecord
+    updateAnswer(question.id, answer)
+    void persistAnswer(question.id, answer)
+  }
+  const navigateQuestion = (nextIndex: number) => {
+    if (locked || nextIndex < 0 || nextIndex >= questions.length) return
+    const question = questions[current]
+    const answer = question ? answersRef.current[question.id] : undefined
+    if (question && answer) void persistAnswer(question.id, answer)
+    setCurrent(nextIndex)
   }
   const canSubmit = questions.every((item) => (answers[item.id]?.status ?? 'unanswered') !== 'unanswered')
   const submit = async () => {
@@ -965,20 +973,23 @@ const QuizLessonView: FC<{ lesson: DashboardLesson; attempt: QuizAttempt | null;
     submittingRef.current = true
     setSubmitting(true)
     try {
-      const savedAnswers = await saveCurrentAnswer('answered')
-      if (!savedAnswers) return
-      await onSubmit(Object.fromEntries(questions.map((question) => [question.id, savedAnswers[question.id] ?? { status: 'unanswered', value: null }])))
+      const question = questions[current]
+      const currentAnswer = question ? answersRef.current[question.id] : undefined
+      if (question && currentAnswer) updateAnswer(question.id, { ...currentAnswer, status: 'answered' })
+      const submittedAnswers = { ...answersRef.current }
+      if (question && currentAnswer) void persistAnswer(question.id, { ...currentAnswer, status: 'answered' })
+      await onSubmit(submittedAnswers)
     } finally {
       submittingRef.current = false
       setSubmitting(false)
     }
   }
   if (!questions.length) return <EmptyState title="Quiz unavailable" description="This quiz does not have any questions." />
-  if (!attempt) return <Paper elevation={0} sx={{ p: 3, border: 1, borderColor: 'divider' }}><Typography variant="h5" sx={{ mb: 1 }}>{lesson.title}</Typography><Typography color="text.secondary" sx={{ mb: 2 }}>Each question has its own time limit. Your answer is saved as you go and when a timer expires.</Typography><Button variant="contained" onClick={() => void startQuiz()}>Start Quiz</Button></Paper>
+  if (!attempt) return <Paper elevation={0} sx={{ p: 3, border: 1, borderColor: 'divider' }}><Typography variant="h5" sx={{ mb: 1 }}>{lesson.title}</Typography><Typography color="text.secondary" sx={{ mb: 2 }}>Total quiz time: {formatQuizCountdown(quizTimeLimitSeconds)}. The timer continues while you navigate between questions, and answers are saved as you go.</Typography><Button variant="contained" onClick={() => void startQuiz()}>Start Quiz</Button></Paper>
   const question = questions[current]
   const answer = answers[question.id]
   const isText = question.options.length === 0 || /fill|short|essay|file|calculation|data/i.test(`${question.type ?? ''} ${question.category ?? ''}`)
-  return <Paper elevation={0} sx={{ width: '100%', maxWidth: 1080, boxSizing: 'border-box', p: { xs: 2.5, md: 4 }, border: 1, borderColor: 'divider' }}><Stack spacing={2}>{warning && <Alert severity="warning" onClose={() => setWarning(false)}>Leaving the quiz may result in disqualification. Violation {violationCount} of {strikeThreshold}.</Alert>}<Stack component="ol" direction="row" justifyContent="center" spacing={1} aria-label="Quiz progress" sx={{ m: 0, p: 0, listStyle: 'none' }}>{questions.map((item, index) => <Box component="li" key={item.id} aria-current={index === current ? 'step' : undefined} aria-label={`Question ${index + 1}${index === current ? ', current' : ''}`} sx={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 1, borderColor: index === current ? 'primary.main' : 'divider', bgcolor: index === current ? 'primary.main' : 'action.hover', color: index === current ? 'primary.contrastText' : 'text.secondary', fontSize: '0.875rem', fontWeight: 700 }}>{index + 1}</Box>)}</Stack><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="overline" color="primary.main">Question {current + 1} of {questions.length}</Typography><Chip color={secondsLeft <= 10 ? 'error' : 'primary'} label={locked ? 'Time expired' : formatQuizCountdown(secondsLeft)} /></Stack><Typography variant="h5">{question.question}</Typography>{question.questionImage && <Box component="img" src={question.questionImage} alt="Question illustration" sx={{ display: 'block', maxWidth: '100%', maxHeight: 360, objectFit: 'contain', borderRadius: 1.5 }} />}{isText ? <TextField fullWidth multiline minRows={3} disabled={locked} value={typeof answer?.value === 'string' ? answer.value : ''} placeholder="Type your answer" onChange={(event) => selectAnswer(event.target.value)} /> : <FormControl disabled={locked}><FormLabel>Choose an answer</FormLabel><RadioGroup value={typeof answer?.value === 'number' ? String(answer.value) : ''} onChange={(event) => selectAnswer(Number(event.target.value))}>{question.options.map((option, index) => <FormControlLabel key={option + index} value={String(index)} control={<Radio />} label={<Stack direction="row" spacing={1} alignItems="center"><Typography variant="body2">{option}</Typography>{question.optionImages?.[index] && <Box component="img" src={question.optionImages[index]} alt={`Option ${index + 1} illustration`} sx={{ maxWidth: 120, maxHeight: 72, objectFit: 'contain', borderRadius: 1 }} />}</Stack>} />)}</RadioGroup></FormControl>}<Typography variant="caption" color="text.secondary">This question limit: {formatQuizCountdown(getQuestionSeconds(question))}. Status: {answer?.status ?? 'unanswered'}.</Typography><Stack direction="row" justifyContent="space-between"><Button disabled={current === 0} onClick={() => setCurrent((index) => index - 1)}>Previous</Button>{current < questions.length - 1 ? <Button variant="outlined" onClick={() => setCurrent((index) => index + 1)}>Next question</Button> : <Button variant="contained" disabled={!canSubmit || submitting} onClick={() => void submit()}>{submitting ? 'Submitting...' : 'Submit quiz'}</Button>}</Stack>{result && <Alert severity={result.passed ? 'success' : 'warning'}>Latest result: {result.score}% ({result.passed ? 'passed' : `need ${passingScore}% to pass`}).</Alert>}</Stack></Paper>
+  return <Paper elevation={0} sx={{ width: '100%', maxWidth: 1080, boxSizing: 'border-box', p: { xs: 2.5, md: 4 }, border: 1, borderColor: 'divider' }}><Stack spacing={2}>{warning && <Alert severity="warning" onClose={() => setWarning(false)}>Leaving the quiz may result in disqualification. Violation {violationCount} of {strikeThreshold}.</Alert>}<Stack component="ol" direction="row" justifyContent="center" spacing={1} aria-label="Quiz progress" sx={{ m: 0, p: 0, listStyle: 'none' }}>{questions.map((item, index) => <Box component="li" key={item.id} aria-current={index === current ? 'step' : undefined} aria-label={`Question ${index + 1}${index === current ? ', current' : ''}`} sx={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 1, borderColor: index === current ? 'primary.main' : 'divider', bgcolor: index === current ? 'primary.main' : 'action.hover', color: index === current ? 'primary.contrastText' : 'text.secondary', fontSize: '0.875rem', fontWeight: 700 }}>{index + 1}</Box>)}</Stack><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="overline" color="primary.main">Question {current + 1} of {questions.length}</Typography><Chip color={secondsLeft <= 10 ? 'error' : 'primary'} label={locked ? 'Time expired' : formatQuizCountdown(secondsLeft)} /></Stack><Typography variant="h5">{question.question}</Typography>{question.questionImage && <Box component="img" src={question.questionImage} alt="Question illustration" sx={{ display: 'block', maxWidth: '100%', maxHeight: 360, objectFit: 'contain', borderRadius: 1.5 }} />}{isText ? <TextField fullWidth multiline minRows={3} disabled={locked} value={typeof answer?.value === 'string' ? answer.value : ''} placeholder="Type your answer" onChange={(event) => selectAnswer(event.target.value)} /> : <FormControl disabled={locked}><FormLabel>Choose an answer</FormLabel><RadioGroup value={typeof answer?.value === 'number' ? String(answer.value) : ''} onChange={(event) => selectAnswer(Number(event.target.value))}>{question.options.map((option, index) => <FormControlLabel key={option + index} value={String(index)} control={<Radio />} label={<Stack direction="row" spacing={1} alignItems="center"><Typography variant="body2">{option}</Typography>{question.optionImages?.[index] && <Box component="img" src={question.optionImages[index]} alt={`Option ${index + 1} illustration`} sx={{ maxWidth: 120, maxHeight: 72, objectFit: 'contain', borderRadius: 1 }} />}</Stack>} />)}</RadioGroup></FormControl>}<Typography variant="caption" color="text.secondary">This question limit: {formatQuizCountdown(getQuestionSeconds(question))}. Status: {answer?.status ?? 'unanswered'}.</Typography><Stack direction="row" justifyContent="space-between"><Button disabled={current === 0 || locked} onClick={() => navigateQuestion(current - 1)}>Previous</Button>{current < questions.length - 1 ? <Button variant="outlined" disabled={locked} onClick={() => navigateQuestion(current + 1)}>Next question</Button> : <Button variant="contained" disabled={!canSubmit || submitting} onClick={() => void submit()}>{submitting ? 'Submitting...' : 'Submit quiz'}</Button>}</Stack>{result && <Alert severity={result.passed ? 'success' : 'warning'}>Latest result: {result.score}% ({result.passed ? 'passed' : `need ${passingScore}% to pass`}).</Alert>}</Stack></Paper>
 }
 
 const ArticleIllustration: FC<{ title: string; description: string; imageUrl?: string }> = ({ title, description, imageUrl }) => {
@@ -1209,7 +1220,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   const persistEngagement = (courseId: number, lessonId: number, activeSeconds: number) => {
     const enrollment = findCourseEnrollment(enrollments, courseId)
     if (!enrollment) return
-    void saveLessonEngagement(enrollment.id, lessonId, { activeSeconds }).catch((error) => setProgressError(error instanceof Error ? error.message : 'Unable to save course activity.'))
+    void saveLessonEngagement(enrollment.id, lessonId, { activeSeconds }).catch(() => undefined)
   }
 
   useEffect(() => {
@@ -1228,7 +1239,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   }, [])
 
   useEffect(() => {
-    if (activeView !== 'course-view' || selectedCourseId === null || !startedCourses[selectedCourseId]) return
+    if (activeView !== 'course-view' || quizActive || selectedCourseId === null || !startedCourses[selectedCourseId]) return
     let lastTrackedAt = Date.now()
     const flushTime = () => {
       const elapsedSeconds = Math.floor((Date.now() - lastTrackedAt) / 1000)
@@ -1249,7 +1260,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
       window.clearInterval(timer)
       flushTime()
     }
-  }, [activeView, enrollments, selectedCourseId, selectedLessonId, startedCourses])
+  }, [activeView, quizActive, enrollments, selectedCourseId, selectedLessonId, startedCourses])
 
   useEffect(() => {
     let isCurrent = true
@@ -1437,7 +1448,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   }
   const saveQuizAnswerForAttempt = async (lessonId: number, attemptId: number, questionId: number, answer: QuizAnswerRecord) => {
     if (selectedCourseId === null || !selectedCourseEnrollment) return
-    try { await saveQuizAnswer(selectedCourseEnrollment.id, lessonId, attemptId, questionId, answer) } catch (error) { setProgressError(error instanceof Error ? error.message : 'Unable to save quiz answer.') }
+    await saveQuizAnswer(selectedCourseEnrollment.id, lessonId, attemptId, questionId, answer)
   }
   const saveQuizViolationForAttempt = async (lessonId: number, attemptId: number, violation: QuizViolation) => {
     if (selectedCourseId === null || !selectedCourseEnrollment) return
