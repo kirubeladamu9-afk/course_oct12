@@ -518,8 +518,75 @@ const WeakAreasPanel: FC<{ enrollments: Array<Pick<DashboardEnrollment, 'id' | '
       return lesson.type === 'quiz' && result && !result.passed ? [{ enrollment, course, lesson, result }] : []
     })
   })
-  const hasWeakSignals = areas.length > 0 || failedQuizzes.length > 0
-  return <Paper elevation={0} sx={{ p: 2.5, mb: 3, border: 1, borderColor: hasWeakSignals ? 'warning.light' : 'divider', backgroundColor: hasWeakSignals ? (theme) => alpha(theme.palette.warning.main, theme.palette.mode === 'dark' ? 0.16 : 0.08) : 'background.paper' }}><Typography component="h2" variant="h6" sx={{ mb: 0.5 }}>Weak Areas</Typography><Typography color="text.secondary" variant="body2" sx={{ mb: hasWeakSignals ? 2 : 0 }}>{areas.length ? 'These topics are below 60% accuracy. Practice them again to build confidence.' : failedQuizzes.length ? 'Failed quiz attempts need review. Retake them to strengthen these topics.' : 'No weak areas detected yet. Complete quizzes and practice exercises to see topic-level results here.'}</Typography>{failedQuizzes.length > 0 && <Stack spacing={1} sx={{ mb: areas.length ? 2 : 0 }}>{failedQuizzes.map(({ enrollment, course, lesson, result }) => { const retakeAllowed = Boolean(result.retakeApproved || (!result.disqualified && !result.violationCount)); return <Stack key={`${enrollment.id}-${lesson.id}`} direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1} sx={{ p: 1.25, borderRadius: 1.5, backgroundColor: 'background.paper' }}><Box><Stack direction="row" spacing={1} alignItems="center"><Typography sx={{ fontWeight: 700 }}>{lesson.topicTitle ?? lesson.title}</Typography><Chip size="small" color="warning" label={`Failed · ${result.score}%`} /></Stack><Typography variant="body2" color="text.secondary">{lesson.title} · Review this quiz to improve your result.</Typography></Box><Button size="small" variant="outlined" onClick={() => onOpenCourse(course.id, lesson.id)}>{retakeAllowed ? `Retake Quiz: ${lesson.title}` : `Review Quiz: ${lesson.title}`}</Button></Stack> })}</Stack>}{areas.length > 0 && <Stack spacing={1}>{areas.map(({ enrollment, area }) => <Stack key={`${enrollment.id}-${area.topic}`} direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1} sx={{ p: 1.25, borderRadius: 1.5, backgroundColor: 'background.paper' }}><Box><Stack direction="row" spacing={1} alignItems="center"><Typography sx={{ fontWeight: 700 }}>{area.topic}</Typography><Chip size="small" color="warning" label={`${area.accuracy}% accuracy`} /></Stack><Typography variant="body2" color="text.secondary">{area.correct} of {area.total} answers correct · Practice this topic again.</Typography><Typography variant="caption" color="text.secondary">From {enrollment.classRecord?.title ?? enrollment.course?.title ?? 'your enrolled course'}</Typography></Box>{area.practiceLessons[0] && <Button size="small" variant="outlined" onClick={() => onOpenCourse(enrollment.item_id, area.practiceLessons[0].lessonId)}>Practice {area.practiceLessons[0].lessonTitle}</Button>}</Stack>)}</Stack>}</Paper>
+  const trackedTopicCount = enrollments.reduce((count, enrollment) => {
+    const course = enrollment.course ?? enrollment.classRecord?.course
+    const topics = new Set(course?.modules.flatMap((module) => module.lessons.flatMap((lesson) => [
+      ...(lesson.quizQuestions ?? []).map((question) => question.topic),
+      ...(lesson.practiceQuestions ?? []).map((question) => question.topic),
+    ])).filter((topic): topic is string => Boolean(topic?.trim())).map((topic) => topic.trim().toLocaleLowerCase()) ?? [])
+    return count + topics.size
+  }, 0)
+  const weakShare = areas.length ? Math.round((areas.length / Math.max(trackedTopicCount, areas.length)) * 100) : 0
+  const needsImprovement = areas.length > 0 || failedQuizzes.length > 0
+  const practiceTarget = areas.find(({ area }) => area.practiceLessons[0]) ?? areas[0]
+  const practiceNow = () => {
+    if (practiceTarget) {
+      onOpenCourse(practiceTarget.enrollment.item_id, practiceTarget.area.practiceLessons[0]?.lessonId)
+      return
+    }
+    const failedQuiz = failedQuizzes[0]
+    if (failedQuiz) onOpenCourse(failedQuiz.enrollment.item_id, failedQuiz.lesson.id)
+  }
+
+  return <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, mb: 3, border: 1, borderColor: 'divider', borderRadius: 3.5, backgroundColor: 'background.paper' }}>
+    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1.5} sx={{ mb: 2.5 }}>
+      <Stack direction="row" spacing={1.5} alignItems="center">
+        <Box sx={{ display: 'grid', placeItems: 'center', width: 48, height: 48, flexShrink: 0, borderRadius: '50%', color: 'error.main', backgroundColor: (theme) => alpha(theme.palette.error.main, theme.palette.mode === 'dark' ? 0.2 : 0.08) }}><GpsFixedOutlinedIcon /></Box>
+        <Box><Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>Weak Topics</Typography><Typography variant="body2" color="text.secondary">Focus more on these areas to improve your score.</Typography></Box>
+      </Stack>
+      <Chip size="small" icon={<WarningAmberOutlinedIcon />} label={needsImprovement ? 'Needs Improvement' : 'Looking Good'} color={needsImprovement ? 'error' : 'success'} variant="outlined" sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, fontWeight: 700 }} />
+    </Stack>
+
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '190px minmax(0, 1fr)' }, gap: { xs: 2.5, md: 3 }, alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: { md: 1 } }}>
+        <Box role="img" aria-label={`${areas.length} weak topics`} sx={{ width: 156, height: 156, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: '50%', background: (theme) => `conic-gradient(${theme.palette.error.main} ${weakShare}%, ${theme.palette.action.disabledBackground} ${weakShare}% 100%)` }}>
+          <Box sx={{ width: 132, height: 132, display: 'grid', placeContent: 'center', justifyItems: 'center', borderRadius: '50%', backgroundColor: 'background.paper' }}>
+            <Typography variant="h3" sx={{ fontWeight: 800, lineHeight: 1 }}>{areas.length}</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>Weak Areas</Typography>
+            <Typography variant="caption" color="text.secondary">Below 60% accuracy</Typography>
+          </Box>
+        </Box>
+      </Box>
+
+      <Box sx={{ minWidth: 0 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 58px 78px', gap: 1, px: 1, pb: 1, color: 'text.secondary' }}>
+          <Typography variant="caption" sx={{ fontWeight: 700 }}>SUBJECT</Typography>
+          <Typography variant="caption" sx={{ textAlign: 'right', fontWeight: 700 }}>SCORE</Typography>
+          <Typography variant="caption" sx={{ textAlign: 'center', fontWeight: 700 }}>STATUS</Typography>
+        </Box>
+        <Box sx={{ maxHeight: 300, overflowY: 'auto', overscrollBehavior: 'contain', borderTop: 1, borderColor: 'divider' }}>
+          {areas.map(({ enrollment, area }) => <Box key={`${enrollment.id}-${area.topic}`} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 58px 78px', gap: 1, alignItems: 'center', px: 1, py: 1.2, borderBottom: 1, borderColor: 'divider' }}>
+            <Box sx={{ minWidth: 0 }}><Typography noWrap sx={{ fontWeight: 700 }}>{area.topic}</Typography><Typography noWrap variant="caption" color="text.secondary">{area.correct} of {area.total} correct · {enrollment.classRecord?.title ?? enrollment.course?.title ?? 'Enrolled course'}</Typography></Box>
+            <Typography sx={{ textAlign: 'right', fontWeight: 800, color: area.accuracy < 30 ? 'error.main' : 'warning.dark' }}>{area.accuracy}%</Typography>
+            <Chip size="small" label="Weak" color="warning" sx={{ justifySelf: 'center', height: 25 }} />
+          </Box>)}
+          {failedQuizzes.map(({ enrollment, course, lesson, result }) => <Box key={`failed-${enrollment.id}-${lesson.id}`} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 58px 78px', gap: 1, alignItems: 'center', px: 1, py: 1.2, borderBottom: 1, borderColor: 'divider' }}>
+            <Box sx={{ minWidth: 0 }}><Typography noWrap sx={{ fontWeight: 700 }}>{lesson.topicTitle ?? lesson.title}</Typography><Typography noWrap variant="caption" color="text.secondary">Quiz to review · {course.title}</Typography></Box>
+            <Typography sx={{ textAlign: 'right', fontWeight: 800, color: 'error.main' }}>{result.score}%</Typography>
+            <Chip size="small" label="Review" color="error" sx={{ justifySelf: 'center', height: 25 }} />
+          </Box>)}
+          {!areas.length && !failedQuizzes.length && <Typography color="text.secondary" variant="body2" sx={{ p: 2 }}>No weak areas detected yet. Complete quizzes and practice exercises to see topic-level results here.</Typography>}
+        </Box>
+      </Box>
+    </Box>
+
+    {(practiceTarget || failedQuizzes.length > 0) && <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} spacing={1.5} sx={{ mt: 2.5, p: 1.5, borderRadius: 2.5, backgroundColor: (theme) => alpha(theme.palette.error.main, theme.palette.mode === 'dark' ? 0.12 : 0.05) }}>
+      <LightbulbOutlinedIcon color="error" />
+      <Typography sx={{ fontWeight: 700, color: 'error.main', whiteSpace: 'nowrap' }}>Study Tip</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>Improve your score by practicing more questions in these topics.</Typography>
+      <Button size="small" variant="contained" color="error" onClick={practiceNow} endIcon={<ArrowForwardRoundedIcon />} sx={{ flexShrink: 0 }}>Practice Now</Button>
+    </Stack>}
+  </Paper>
 }
 
 const OverviewView: FC<{ enrollments: DashboardEnrollment[]; now: Date; onSelectView: (view: DashboardView) => void; onOpenCourse: (courseId: number, lessonId?: number) => void; gamificationData: GamificationData }> = ({ enrollments, now, onSelectView, onOpenCourse, gamificationData }) => {

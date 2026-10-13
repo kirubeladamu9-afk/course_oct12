@@ -71,6 +71,10 @@ import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline'
 import QuizOutlinedIcon from '@mui/icons-material/QuizOutlined'
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined'
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined'
+import GpsFixedOutlinedIcon from '@mui/icons-material/GpsFixedOutlined'
+import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined'
+import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
+import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import { type FormEvent, useEffect, useState } from 'react'
 import { toast } from '@/components/toast'
 import { Logo } from '@/components/logo'
@@ -767,23 +771,57 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'revenueByMonth' | 'enrol
   )
 }
 
-const WeakAreasPanel: FC<{ weakAreas: AdminWeakArea[] }> = ({ weakAreas }) => <Paper elevation={0} sx={{ p: 2.5, mb: 2, width: '100%', minWidth: 0, boxSizing: 'border-box', borderRadius: 3.5, border: 1, borderColor: weakAreas.length ? 'warning.main' : 'divider', backgroundColor: 'background.paper' }}>
-  <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 2 }}>
-    <Box>
-      <Typography component="h2" variant="h6">Topics needing attention</Typography>
-      <Typography color="text.secondary" variant="body2">Topics below 60% accuracy across completed quiz and practice responses.</Typography>
-    </Box>
-    <Chip size="small" color={weakAreas.length ? 'warning' : 'success'} label={weakAreas.length ? `${weakAreas.length} weak topic${weakAreas.length === 1 ? '' : 's'}` : 'No weak topics'} />
-  </Stack>
-  {weakAreas.length === 0 ? <Typography color="text.secondary" variant="body2">Topic performance is on track. Weak areas will appear here as learner responses are recorded.</Typography> : <Stack spacing={1.25}>{weakAreas.map((area) => <Box key={area.topic} sx={{ p: 1.5, borderRadius: 2.5, backgroundColor: (theme) => alpha(theme.palette.warning.main, theme.palette.mode === 'dark' ? 0.16 : 0.08) }}>
-    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
-      <Typography sx={{ fontWeight: 700 }}>{area.topic}</Typography>
-      <Chip size="small" color="warning" label={`${area.accuracy}% accuracy`} sx={{ alignSelf: { xs: 'flex-start', sm: 'center' } }} />
+const WeakAreasPanel: FC<{ weakAreas: AdminWeakArea[] }> = ({ weakAreas }) => {
+  const totalResponses = weakAreas.reduce((total, area) => total + area.total, 0)
+  const correctResponses = weakAreas.reduce((total, area) => total + area.correct, 0)
+  const accuracy = totalResponses ? Math.round((correctResponses / totalResponses) * 100) : 0
+  const needsImprovement = weakAreas.length > 0
+
+  return <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.5 }, mb: 2, width: '100%', minWidth: 0, boxSizing: 'border-box', borderRadius: 3.5, border: 1, borderColor: 'divider', backgroundColor: 'background.paper' }}>
+    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1.25} sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={1.25} alignItems="center">
+        <Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, flexShrink: 0, borderRadius: '50%', color: 'error.main', backgroundColor: (theme) => alpha(theme.palette.error.main, theme.palette.mode === 'dark' ? 0.2 : 0.08) }}><GpsFixedOutlinedIcon /></Box>
+        <Box><Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>Weak Topics</Typography><Typography variant="body2" color="text.secondary">Focus more on these areas to improve scores.</Typography></Box>
+      </Stack>
+      <Chip size="small" icon={<WarningAmberOutlinedIcon />} label={needsImprovement ? 'Needs Improvement' : 'On Track'} color={needsImprovement ? 'error' : 'success'} variant="outlined" sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, fontWeight: 700 }} />
     </Stack>
-    <LinearProgress color="warning" variant="determinate" value={area.accuracy} aria-label={`${area.topic}: ${area.accuracy}% accuracy`} sx={{ height: 7, borderRadius: 4, mb: 0.75 }} />
-    <Typography color="text.secondary" variant="body2">{area.correct} of {area.total} answers correct · {area.affectedStudents} learner{area.affectedStudents === 1 ? '' : 's'} below the target</Typography>
-  </Box>)}</Stack>}
-</Paper>
+
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '110px minmax(0, 1fr)' }, gap: { xs: 2, sm: 2.25 }, alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+        <Box role="img" aria-label={`${weakAreas.length} weak topics`} sx={{ width: 104, height: 104, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: '50%', background: (theme) => `conic-gradient(${theme.palette.error.main} ${accuracy}%, ${theme.palette.action.disabledBackground} ${accuracy}% 100%)` }}>
+          <Box sx={{ width: 88, height: 88, display: 'grid', placeContent: 'center', justifyItems: 'center', borderRadius: '50%', backgroundColor: 'background.paper' }}>
+            <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1 }}>{weakAreas.length}</Typography>
+            <Typography variant="caption" sx={{ fontWeight: 700 }}>Weak Areas</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: 9 }}>Below 60%</Typography>
+          </Box>
+        </Box>
+      </Box>
+
+      <Box sx={{ minWidth: 0 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 48px 58px', gap: .5, px: .75, pb: .75, color: 'text.secondary' }}>
+          <Typography variant="caption" sx={{ fontWeight: 700 }}>SUBJECT</Typography>
+          <Typography variant="caption" sx={{ textAlign: 'right', fontWeight: 700 }}>SCORE</Typography>
+          <Typography variant="caption" sx={{ textAlign: 'center', fontWeight: 700 }}>STATUS</Typography>
+        </Box>
+        <Box sx={{ maxHeight: 280, overflowY: 'auto', overscrollBehavior: 'contain', borderTop: 1, borderColor: 'divider' }}>
+          {weakAreas.map((area) => <Box key={area.topic} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 48px 58px', gap: .5, alignItems: 'center', px: .75, py: 1, borderBottom: 1, borderColor: 'divider' }}>
+            <Box sx={{ minWidth: 0 }}><Typography noWrap sx={{ fontWeight: 700 }}>{area.topic}</Typography><Typography noWrap variant="caption" color="text.secondary">{area.correct} of {area.total} correct · {area.affectedStudents} learner{area.affectedStudents === 1 ? '' : 's'}</Typography></Box>
+            <Typography sx={{ textAlign: 'right', fontWeight: 800, color: area.accuracy < 30 ? 'error.main' : 'warning.dark' }}>{area.accuracy}%</Typography>
+            <Chip size="small" label="Weak" color="warning" sx={{ justifySelf: 'center', height: 23, fontSize: 11 }} />
+          </Box>)}
+          {!weakAreas.length && <Typography color="text.secondary" variant="body2" sx={{ p: 1.5 }}>Topic performance is on track. Weak areas will appear here as learner responses are recorded.</Typography>}
+        </Box>
+      </Box>
+    </Box>
+
+    <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} spacing={1.25} sx={{ mt: 2, p: 1.25, borderRadius: 2.25, backgroundColor: (theme) => alpha(theme.palette.error.main, theme.palette.mode === 'dark' ? 0.12 : 0.05) }}>
+      <LightbulbOutlinedIcon color="error" fontSize="small" />
+      <Typography variant="body2" sx={{ fontWeight: 700, color: 'error.main', whiteSpace: 'nowrap' }}>Study Tip</Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>Use topic performance to guide focused support.</Typography>
+      <MuiButton size="small" variant="contained" color="error" onClick={() => navigateTo('/admin/reports')} endIcon={<ArrowForwardRoundedIcon />} sx={{ flexShrink: 0 }}>View Reports</MuiButton>
+    </Stack>
+  </Paper>
+}
 
 const SelectedStudentStatistics: FC = () => {
   const [classes, setClasses] = useState<AdminClassesWorkspace['classes']>([])
