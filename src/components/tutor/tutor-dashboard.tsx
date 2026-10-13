@@ -232,35 +232,41 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
   const [tutorOptions, setTutorOptions] = useState<TutorOption[]>([])
   const user = getAuthenticatedUser()
 
-  const refreshAtRisk = async () => {
-    setAtRiskLoading(true)
+  const refreshAtRisk = async (background = false) => {
+    if (!background) setAtRiskLoading(true)
     try {
       setAtRiskStudents(await getTutorAtRiskStudents())
       setAtRiskError(null)
     } catch (loadError) {
       setAtRiskError(loadError instanceof Error ? loadError.message : 'Unable to load at-risk students.')
     } finally {
-      setAtRiskLoading(false)
+      if (!background) setAtRiskLoading(false)
     }
   }
 
-  const load = async () => {
-    setLoading(true)
-    setError('')
+  const load = async ({ background = false }: { background?: boolean } = {}) => {
+    if (background && getTutorEditTargetFromPath(window.location.pathname)) return
+    if (!background) {
+      setLoading(true)
+      setError('')
+    }
+    void refreshAtRisk(background)
     try {
-      const [nextOverview, nextCourses, nextClasses, nextTutorOptions] = await Promise.all([getTutorOverview(), getTutorCourses(), getTutorClasses(), getTutorEditOptions(), refreshAtRisk()])
+      const [nextOverview, nextCourses, nextClasses, nextTutorOptions] = await Promise.all([getTutorOverview(), getTutorCourses(), getTutorClasses(), getTutorEditOptions()])
       setOverview(nextOverview)
       setCourses(nextCourses)
       setClasses(nextClasses)
       setTutorOptions(nextTutorOptions)
-      setProfile({ name: nextOverview.tutor.name, phone: nextOverview.tutor.phone, bio: nextOverview.tutor.bio })
-      if (nextClasses[0]) setSelectedClassId(nextClasses[0].id)
+      setSelectedClassId((current) => nextClasses.some((classRecord) => classRecord.id === current) ? current : nextClasses[0]?.id ?? '')
+      setProgressTarget((current) => current?.type === 'class' && !nextClasses.some((classRecord) => classRecord.id === current.id) ? null : current)
+      if (!background) setProfile({ name: nextOverview.tutor.name, phone: nextOverview.tutor.phone, bio: nextOverview.tutor.bio })
     } catch (loadError) {
+      if (background) return
       const message = loadError instanceof Error ? loadError.message : 'Unable to load tutor portal.'
       setError(message)
       toast.add({ type: 'error', title: 'Tutor portal unavailable', description: message })
     } finally {
-      setLoading(false)
+      if (!background) setLoading(false)
     }
   }
 
@@ -270,24 +276,12 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
     void load()
   }, [])
   useEffect(() => {
-    let isCurrent = true
-    const refreshClasses = async () => {
-      try {
-        const nextClasses = await getTutorClasses()
-        if (!isCurrent) return
-        setClasses(nextClasses)
-        setSelectedClassId((current) => nextClasses.some((classRecord) => classRecord.id === current) ? current : nextClasses[0]?.id ?? '')
-        setProgressTarget((current) => current?.type === 'class' && !nextClasses.some((classRecord) => classRecord.id === current.id) ? null : current)
-      } catch {
-        return
-      }
-    }
-    const timer = window.setInterval(() => { void refreshClasses() }, 30000)
-    window.addEventListener('focus', refreshClasses)
+    const refresh = () => { void load({ background: true }) }
+    const timer = window.setInterval(refresh, 30000)
+    window.addEventListener('focus', refresh)
     return () => {
-      isCurrent = false
       window.clearInterval(timer)
-      window.removeEventListener('focus', refreshClasses)
+      window.removeEventListener('focus', refresh)
     }
   }, [])
   useEffect(() => {
@@ -317,10 +311,6 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
     setClassDraft(classRecord ? { id: classRecord.id, program_id: classRecord.programId as ProgramId, title: classRecord.title, tutor_id: classRecord.tutorId, tutor_name: classRecord.tutorName, capacity: classRecord.capacity, schedule: { startDate: classRecord.schedule.startDate, endDate: classRecord.schedule.endDate, days: classRecord.schedule.days, time: classRecord.schedule.time, duration: classRecord.schedule.duration }, meeting_link: classRecord.meetingLink, modules: classRecord.modules, price: classRecord.price, status: classRecord.status, published: classRecord.published, grade_level: classRecord.gradeLevel } : null)
   }, [currentPath, courses, classes])
   useEffect(() => {
-    const timer = window.setInterval(() => { void refreshAtRisk() }, 30000)
-    return () => window.clearInterval(timer)
-  }, [])
-  useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30000)
     return () => window.clearInterval(timer)
   }, [])
@@ -343,7 +333,8 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
   }, [progressTarget])
 
   useEffect(() => {
-    const loadStudents = async () => {
+    let isCurrent = true
+    const loadStudents = async (background = false) => {
       const request = view === 'students' && selectedClassId !== ''
         ? getTutorClassStudents(selectedClassId)
         : progressTarget
@@ -353,24 +344,41 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
         setStudents([])
         return
       }
-      setStudentsLoading(true)
+      if (!background) setStudentsLoading(true)
       try {
-        setStudents(await request)
+        const nextStudents = await request
+        if (isCurrent) setStudents(nextStudents)
       } catch (loadError) {
+        if (background || !isCurrent) return
         setStudents([])
         const message = loadError instanceof Error ? loadError.message : 'Unable to load students.'
         setError(message)
         toast.add({ type: 'error', title: 'Unable to load students', description: message })
       } finally {
-        setStudentsLoading(false)
+        if (isCurrent && !background) setStudentsLoading(false)
       }
     }
     void loadStudents()
-    const timer = window.setInterval(() => { void loadStudents() }, 30000)
-    return () => window.clearInterval(timer)
+    const refresh = () => { void loadStudents(true) }
+    const timer = window.setInterval(refresh, 30000)
+    window.addEventListener('focus', refresh)
+    return () => {
+      isCurrent = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+    }
   }, [view, selectedClassId, progressTarget])
 
   const selectedClass = classes.find((classRecord) => classRecord.id === selectedClassId)
+  const activeProgressTarget = useMemo<ProgressTarget | null>(() => {
+    if (!progressTarget) return null
+    if (progressTarget.type === 'course') {
+      const course = courses.find((item) => item.id === progressTarget.id)
+      return course ? { ...progressTarget, title: course.title, modules: course.modules } : progressTarget
+    }
+    const classRecord = classes.find((item) => item.id === progressTarget.id)
+    return classRecord ? { ...progressTarget, title: classRecord.title, modules: classRecord.modules } : progressTarget
+  }, [progressTarget, courses, classes])
   const visibleCourses = courses.filter((course) => `${course.title} ${course.category}`.toLowerCase().includes(courseSearch.trim().toLowerCase()) && (courseFilter === 'all' || course.status.toLowerCase() === courseFilter))
   const visibleClasses = classes.filter((classRecord) => `${classRecord.title} ${classRecord.programId} ${classRecord.courseTitle ?? ''}`.toLowerCase().includes(classSearch.trim().toLowerCase()) && (classFilter === 'all' || (classFilter === 'published' ? classRecord.published : !classRecord.published)))
   const liveLessons = useMemo(() => selectedClass?.modules.flatMap((module) => module.lessons).filter((lesson) => lesson.type === 'live') ?? [], [selectedClass])
@@ -543,7 +551,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
       {view === 'schedule' && <TutorScheduleView classes={classes} now={now} />}
       {view === 'courses' && !progressTarget && !editTarget && <><Box sx={{ mb: 2.5 }}><Typography variant="h4" sx={{ mb: 0.75 }}>My courses</Typography><Typography color="text.secondary">Curriculum and student progress for your assigned courses</Typography></Box><TutorListControls search={courseSearch} onSearch={setCourseSearch} searchPlaceholder="Search courses..." filter={courseFilter} onFilter={setCourseFilter} filterLabel="Course filter" filters={[{ value: 'all', label: 'All Courses' }, { value: 'published', label: 'Published' }, { value: 'draft', label: 'Draft' }]} /><Stack spacing={2.5}>{visibleCourses.length ? visibleCourses.map((course) => <Card key={course.id} elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, transition: 'border-color .18s, box-shadow .18s', '&:hover': { borderColor: 'primary.main', boxShadow: 2 } }}><CardContent sx={{ p: { xs: 2, md: 2.5 }, '&:last-child': { pb: { xs: 2, md: 2.5 } } }}><Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={2.25}><Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1 }}><Box component="img" src={course.cover} alt={`${course.title} thumbnail`} sx={{ width: 96, height: 76, flexShrink: 0, objectFit: 'cover', borderRadius: 2 }} /><Box sx={{ minWidth: 0 }}><Typography sx={{ fontSize: '1.3rem', fontWeight: 700, lineHeight: 1.3, mb: 0.75 }}>{course.title}</Typography><Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center" spacing={0.5}><SchoolOutlinedIcon fontSize="small" /><Typography variant="body2">{course.category}</Typography></Stack><Typography variant="body2">·</Typography><Stack direction="row" alignItems="center" spacing={0.5}><GroupsOutlinedIcon fontSize="small" /><Typography variant="body2">{course.students} students</Typography></Stack></Stack></Box></Box><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ flexShrink: 0, '& .MuiButton-root': { px: 1.75, py: 1 } }}><Button size="small" variant="outlined" startIcon={<AssessmentOutlinedIcon />} onClick={() => setProgressTarget({ type: 'course', id: course.id, title: course.title, modules: course.modules })}>Student Progress</Button><Button size="small" variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => manageCourse(course)}>Edit curriculum</Button></Stack></Stack></CardContent></Card>) : <Typography color="text.secondary">No courses assigned yet.</Typography>}</Stack></>}
       {view === 'classes' && !progressTarget && !editTarget && <><Box sx={{ mb: 2.5 }}><Typography variant="h4" sx={{ mb: 0.75 }}>My classes</Typography><Typography color="text.secondary">Rosters, attendance, curriculum, and student progress for your assigned classes</Typography></Box><TutorListControls search={classSearch} onSearch={setClassSearch} searchPlaceholder="Search classes..." filter={classFilter} onFilter={setClassFilter} filterLabel="Class filter" filters={[{ value: 'all', label: 'All Classes' }, { value: 'published', label: 'Published' }, { value: 'unpublished', label: 'Unpublished' }]} /><Stack spacing={2.5}>{visibleClasses.length ? visibleClasses.map((classRecord) => <Card key={classRecord.id} elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, transition: 'border-color .18s, box-shadow .18s', '&:hover': { borderColor: 'primary.main', boxShadow: 2 } }}><CardContent sx={{ p: { xs: 2, md: 2.5 }, '&:last-child': { pb: { xs: 2, md: 2.5 } } }}><Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={2.25}><Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontSize: '1.3rem', fontWeight: 700, lineHeight: 1.3, mb: 0.75 }}>{classRecord.title}</Typography><Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center" spacing={0.5}><GroupsOutlinedIcon fontSize="small" /><Typography variant="body2">{classRecord.enrolledCount} enrolled students</Typography></Stack><Typography variant="body2">·</Typography><Typography variant="body2">{classRecord.status}</Typography><Typography variant="body2">·</Typography><Stack direction="row" alignItems="center" spacing={0.5}><CalendarMonthOutlinedIcon fontSize="small" /><Typography variant="body2">{classRecord.schedule.startDate || 'Start date pending'} – {classRecord.schedule.endDate || 'End date pending'}</Typography></Stack></Stack></Box><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ flexShrink: 0, '& .MuiButton-root': { px: 1.5, py: 1 } }}><Button size="small" variant="outlined" startIcon={<AssessmentOutlinedIcon />} onClick={() => { setProgressTarget({ type: 'class', id: classRecord.id, title: classRecord.title, modules: classRecord.modules }); setView('classes') }}>Student Progress</Button><Button size="small" variant="outlined" startIcon={<GroupsOutlinedIcon />} onClick={() => { setSelectedClassId(classRecord.id); setProgressTarget(null); setView('students') }}>Students & attendance</Button><Button size="small" variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => manageClass(classRecord)}>Edit curriculum</Button></Stack></Stack></CardContent></Card>) : <Typography color="text.secondary">No classes assigned yet.</Typography>}</Stack></>}
-      {progressTarget && <StudentProgressView target={progressTarget} students={students} studentsLoading={studentsLoading} classRanks={classRanks} onBack={() => setProgressTarget(null)} />}
+      {activeProgressTarget && <StudentProgressView target={activeProgressTarget} students={students} studentsLoading={studentsLoading} classRanks={classRanks} onBack={() => setProgressTarget(null)} />}
       {view === 'students' && selectedClass && !progressTarget && <StudentsAttendanceView selectedClass={selectedClass} students={students} liveLessons={liveLessons} onMarkAttendance={markAttendance} studentsLoading={studentsLoading} onBack={() => selectView('classes')} />}
       {view === 'students' && !selectedClass && <><Typography variant="h4" sx={{ mb: 3 }}>Students & attendance</Typography><FormControl sx={{ minWidth: { xs: '100%', sm: 360 }, mb: 2 }}><InputLabel>Class</InputLabel><Select label="Class" value={selectedClassId} onChange={(event) => setSelectedClassId(event.target.value as number)}>{classes.map((classRecord) => <MenuItem key={classRecord.id} value={classRecord.id}>{classRecord.title}</MenuItem>)}</Select></FormControl>{selectedClass && <Paper elevation={0} sx={{ p: 2, mb: 2, border: 1, borderColor: 'divider' }}><Typography variant="subtitle2">Join-click reference</Typography><Typography variant="caption" color="text.secondary">A Join Class click is a reference only; select Present or Absent to record attendance.</Typography><Stack spacing={0.5} sx={{ mt: 1 }}>{students.flatMap((student) => liveLessons.filter((lesson) => student.sessionJoinClicks[lesson.id]).map((lesson) => <Typography key={`${student.id}-${lesson.id}`} variant="caption">{student.studentName} · {lesson.title}: {new Date(student.sessionJoinClicks[lesson.id]).toLocaleString()}</Typography>))}</Stack></Paper>}{selectedClass && <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'auto' }}><Box sx={{ minWidth: 700 }}><Stack direction="row" sx={{ p: 2, backgroundColor: 'background.default', fontWeight: 700 }}><Typography sx={{ flex: 1 }}>Student</Typography>{liveLessons.map((lesson) => <Typography key={lesson.id} sx={{ width: 150 }}>{lesson.title}</Typography>)}</Stack><Divider />{students.length ? students.map((student) => <Stack key={student.id} direction="row" alignItems="center" sx={{ p: 2 }}><Box sx={{ flex: 1 }}><Typography>{student.studentName}</Typography><Typography variant="caption" color="text.secondary">{student.studentEmail}</Typography></Box>{liveLessons.map((lesson) => <FormControl key={lesson.id} size="small" sx={{ width: 140 }}><Select value={student.attendance[lesson.id] ?? ''} displayEmpty inputProps={{ 'aria-label': `${student.studentName} attendance for ${lesson.title}` }} onChange={(event) => void markAttendance(student, lesson.id, event.target.value as 'Present' | 'Absent')}><MenuItem value="">Not marked</MenuItem><MenuItem value="Present">Present</MenuItem><MenuItem value="Absent">Absent</MenuItem></Select></FormControl>)}</Stack>) : <Typography color="text.secondary" sx={{ p: 3 }}>No students enrolled in this class.</Typography>}</Box></Paper>}</>}
       {view === 'profile' && <><Typography variant="h4" sx={{ mb: 0.5 }}>Tutor profile</Typography><Typography color="text.secondary" sx={{ mb: 3 }}>Keep your contact details and teaching bio up to date for students and administrators.</Typography><Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="stretch"><Paper elevation={0} sx={{ p: 3, width: { xs: '100%', md: 240 }, border: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}><Avatar sx={{ width: 88, height: 88, mb: 2, fontSize: 30, fontWeight: 700, backgroundColor: 'primary.main' }}>{profile.name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || '?'}</Avatar><Typography variant="h6">{profile.name || 'Tutor'}</Typography><Typography variant="body2" color="text.secondary">Tutor account</Typography></Paper><Paper component="form" onSubmit={saveProfile} elevation={0} sx={{ p: { xs: 2, md: 3 }, flex: 1, border: 1, borderColor: 'divider' }}><Stack spacing={2}><TextField label="Full name" value={profile.name} onChange={(event) => { setProfile({ ...profile, name: event.target.value }); setProfileSaved(false) }} required fullWidth /><TextField label="Phone number" placeholder="Add a phone number" value={profile.phone} onChange={(event) => { setProfile({ ...profile, phone: event.target.value }); setProfileSaved(false) }} fullWidth /><TextField label="Teaching bio" placeholder="Tell students about your teaching experience" value={profile.bio} onChange={(event) => { setProfile({ ...profile, bio: event.target.value }); setProfileSaved(false) }} multiline minRows={5} fullWidth /><Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}><Typography variant="caption" color="text.secondary">Your profile is visible in the tutor portal.</Typography><Button type="submit" variant="contained" disabled={saving} startIcon={<PersonOutlineIcon />}>{saving ? 'Saving...' : 'Save profile'}</Button></Stack>{profileSaved && <Typography color="success.main" role="status">Profile updated successfully.</Typography>}</Stack></Paper></Stack></>}
