@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import express from 'express'
 import postgres from 'postgres'
 import { getChangedCourseLessonIds, remapReusedCourseLessonIds } from './course-lesson-identities.js'
+import { getLatestSubmittedQuizAttempts } from './quiz-performance.js'
 
 const databaseUrl = process.env.DATABASE_URL
 
@@ -948,8 +949,7 @@ const getTopicPerformance = (modules, quizAttempts, practiceAnswers) => {
     topics.set(key, current)
   }
   const lessons = getCourseLessons(modules)
-  for (const attempt of Array.isArray(quizAttempts) ? quizAttempts : []) {
-    if (!attempt?.submittedAt) continue
+  for (const attempt of getLatestSubmittedQuizAttempts(quizAttempts)) {
     const questions = lessons.find((lesson) => lesson?.id === attempt.lessonId)?.quizQuestions ?? []
     const answers = normalizeQuizAnswers(attempt.answers, questions)
     for (const question of questions) addAnswer(question.topic, selectedOptionFromRecord(answers[String(question.id)], question) === question.correctOption)
