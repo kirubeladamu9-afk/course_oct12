@@ -633,17 +633,15 @@ export interface TutorQuizSubmissionQuestion {
 export interface TutorQuizSubmission {
   id: number
   contentType: 'course' | 'class'
+  contentId: number
   contentTitle: string
   lessonTitle: string
+  studentId: number
   studentName: string
   studentEmail: string
   submittedAt: string
   score: number
   passed: boolean
-  status: 'ungraded' | 'completed'
-  comment: string
-  questionNotes: Record<string, string>
-  reviewedAt: string | null
   questions: TutorQuizSubmissionQuestion[]
 }
 
@@ -651,15 +649,6 @@ export const getTutorQuizSubmissions = async (): Promise<TutorQuizSubmission[]> 
   const response = await requestApi('/api/tutor/grading/submissions')
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
-}
-
-export const saveTutorQuizReview = async (attemptId: number, review: { comment: string; questionNotes: Record<string, string>; completed: boolean }): Promise<void> => {
-  const response = await requestApi(`/api/tutor/grading/submissions/${attemptId}/review`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(review),
-  })
-  if (!response.ok) throw new Error(await getErrorMessage(response))
 }
 
 export const updateTutorProfile = async (profile: Partial<Pick<AdminTutor, 'name' | 'phone' | 'bio'>>): Promise<AdminTutor> => {

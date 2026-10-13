@@ -430,16 +430,6 @@ const initializeDatabase = async () => {
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS quiz_attempts_one_open_attempt_idx ON quiz_attempts(enrollment_id, lesson_id) WHERE submitted_at IS NULL`
 
   await sql`
-    CREATE TABLE IF NOT EXISTS quiz_attempt_reviews (
-      attempt_id BIGINT PRIMARY KEY REFERENCES quiz_attempts(id) ON DELETE CASCADE,
-      comment TEXT NOT NULL DEFAULT '',
-      question_notes JSONB NOT NULL DEFAULT '{}'::jsonb,
-      completed BOOLEAN NOT NULL DEFAULT false,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `
-
-  await sql`
     CREATE TABLE IF NOT EXISTS gamification_activity_rewards (
       id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -2909,22 +2899,19 @@ app.get('/api/tutor/grading/submissions', requireTutor, async (request, response
            attempts.score,
            attempts.passed,
            attempts.submitted_at AS "submittedAt",
+           students.id::INTEGER AS "studentId",
            COALESCE(NULLIF(users.name, ''), students.full_name) AS "studentName",
            users.email AS "studentEmail",
            CASE WHEN classes.id IS NULL THEN 'course' ELSE 'class' END AS "contentType",
+           COALESCE(classes.id, courses.id)::INTEGER AS "contentId",
            COALESCE(classes.title, courses.title) AS "contentTitle",
-           CASE WHEN classes.id IS NULL THEN courses.modules ELSE classes.modules END AS modules,
-           COALESCE(quiz_attempt_reviews.completed, false) AS completed,
-           COALESCE(quiz_attempt_reviews.comment, '') AS comment,
-           COALESCE(quiz_attempt_reviews.question_notes, '{}'::jsonb) AS "questionNotes",
-           quiz_attempt_reviews.updated_at AS "reviewedAt"
+           CASE WHEN classes.id IS NULL THEN courses.modules ELSE classes.modules END AS modules
     FROM quiz_attempts attempts
     INNER JOIN enrollments ON enrollments.id = attempts.enrollment_id
     INNER JOIN students ON students.id = enrollments.student_id
     INNER JOIN users ON users.id = students.user_id
     LEFT JOIN courses ON courses.id = enrollments.course_id
     LEFT JOIN classes ON classes.id = enrollments.class_id
-    LEFT JOIN quiz_attempt_reviews ON quiz_attempt_reviews.attempt_id = attempts.id
     WHERE attempts.submitted_at IS NOT NULL
       AND (courses.tutor_id = ${request.tutorId} OR (classes.tutor_id = ${request.tutorId} AND classes.published = true))
     ORDER BY attempts.submitted_at DESC, attempts.id DESC
@@ -2937,17 +2924,15 @@ app.get('/api/tutor/grading/submissions', requireTutor, async (request, response
     return {
       id: row.id,
       contentType: row.contentType,
+      contentId: row.contentId,
       contentTitle: row.contentTitle,
       lessonTitle: lesson?.title ?? 'Quiz',
+      studentId: row.studentId,
       studentName: row.studentName,
       studentEmail: row.studentEmail,
       submittedAt: row.submittedAt,
       score: row.score,
       passed: row.passed,
-      status: row.completed ? 'completed' : 'ungraded',
-      comment: row.comment,
-      questionNotes: deserializeJson(row.questionNotes) ?? {},
-      reviewedAt: row.reviewedAt,
       questions: questions.map((question) => {
         const selectedOption = selectedOptionFromRecord(answers[String(question.id)], question)
         return {
@@ -2961,32 +2946,6 @@ app.get('/api/tutor/grading/submissions', requireTutor, async (request, response
       }),
     }
   }))
-})
-
-app.put('/api/tutor/grading/submissions/:id/review', requireTutor, async (request, response) => {
-  const attemptId = parseCourseId(request.params.id)
-  const { comment, questionNotes, completed } = request.body ?? {}
-  const notesAreValid = isPlainObject(questionNotes) && Object.values(questionNotes).every((note) => typeof note === 'string' && note.length <= 2000)
-  if (attemptId === null || typeof comment !== 'string' || comment.length > 2000 || !notesAreValid || typeof completed !== 'boolean') {
-    return response.status(400).json({ message: 'Enter valid review details.' })
-  }
-  const [attempt] = await sql`
-    SELECT attempts.id
-    FROM quiz_attempts attempts
-    INNER JOIN enrollments ON enrollments.id = attempts.enrollment_id
-    LEFT JOIN courses ON courses.id = enrollments.course_id
-    LEFT JOIN classes ON classes.id = enrollments.class_id
-    WHERE attempts.id = ${attemptId}
-      AND attempts.submitted_at IS NOT NULL
-      AND (courses.tutor_id = ${request.tutorId} OR (classes.tutor_id = ${request.tutorId} AND classes.published = true))
-  `
-  if (!attempt) return response.status(404).json({ message: 'Quiz submission not found.' })
-  await sql`
-    INSERT INTO quiz_attempt_reviews (attempt_id, comment, question_notes, completed, updated_at)
-    VALUES (${attemptId}, ${comment.trim()}, ${JSON.stringify(questionNotes)}::jsonb, ${completed}, NOW())
-    ON CONFLICT (attempt_id) DO UPDATE SET comment = EXCLUDED.comment, question_notes = EXCLUDED.question_notes, completed = EXCLUDED.completed, updated_at = NOW()
-  `
-  return response.status(204).end()
 })
 
 app.patch('/api/tutor/profile', requireTutor, async (request, response) => {
