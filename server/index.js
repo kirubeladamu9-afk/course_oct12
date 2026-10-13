@@ -2904,7 +2904,7 @@ app.patch('/api/tutor/classes/enrollments/:id/attendance', requireTutor, async (
 app.get('/api/tutor/grading/submissions', requireTutor, async (request, response) => {
   const rows = await sql`
     SELECT attempts.id::INTEGER AS id,
-           attempts.lesson_id::INTEGER AS "lessonId",
+           attempts.lesson_id AS "lessonId",
            attempts.answers,
            attempts.score,
            attempts.passed,
@@ -2931,7 +2931,7 @@ app.get('/api/tutor/grading/submissions', requireTutor, async (request, response
   `
   return response.json(rows.map((row) => {
     const modules = deserializeJson(row.modules) ?? []
-    const lesson = getCourseLessons(modules).find((item) => item?.id === row.lessonId)
+    const lesson = getCourseLessons(modules).find((item) => item?.id === Number(row.lessonId))
     const questions = Array.isArray(lesson?.quizQuestions) ? lesson.quizQuestions : []
     const answers = normalizeQuizAnswers(row.answers, questions)
     return {
