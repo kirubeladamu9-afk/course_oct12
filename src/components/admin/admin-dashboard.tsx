@@ -74,7 +74,7 @@ import { toast } from '@/components/toast'
 import { Logo } from '@/components/logo'
 import { StyledButton } from '@/components/styled-button'
 import { navigateTo } from '@/lib/navigation'
-import { approveAdminQuizRetake, changePassword, getAdminRegistrations, getAuthenticatedUser, resetAdminUserPassword, saveAuthenticatedUser, signOut, updateAdminCourse, updateAdminTutor, updateAdminTutorStatus, updateAdminUserStatus, updateAuthenticatedProfile, type AdminDashboardOverview, type AdminRegistration, type AdminWeakArea, createAdminCourse, createAdminTutor, deleteAdminCourse, deleteAdminTutor, getAdminAtRiskStudents, getAdminClassesWorkspace, getAdminCourse, getAdminCourses, getAdminDashboardOverview, getAdminQuizViolations, getAdminTutor, getAdminTutors, getAdminUsers, type AdminQuizViolation, type AtRiskStudent, type AuthUser } from '@/services/api'
+import { approveAdminQuizRetake, changePassword, getAdminRegistrations, getAuthenticatedUser, resetAdminUserPassword, saveAuthenticatedUser, signOut, updateAdminCourse, updateAdminTutor, updateAdminTutorStatus, updateAdminUserStatus, updateAuthenticatedProfile, type AdminDashboardOverview, type AdminRegistration, type AdminWeakArea, createAdminCourse, createAdminTutor, deleteAdminCourse, deleteAdminTutor, getAdminAtRiskStudents, getAdminClassesWorkspace, getAdminCourse, getAdminCourses, getAdminDashboardOverview, getAdminQuizViolations, getAdminTutor, getAdminTutors, getAdminUsers, getClassStatistics, type AdminClassesWorkspace, type AdminQuizViolation, type AtRiskStudent, type AuthUser, type ClassStatistics, type ClassStudentStat } from '@/services/api'
 import AtRiskStudentsPanel from '@/components/at-risk-students-panel'
 import AdminDataTable, { type DataColumn } from './admin-data-table'
 import ClassesWorkspace from './classes-workspace'
@@ -701,6 +701,85 @@ const WeakAreasPanel: FC<{ weakAreas: AdminWeakArea[] }> = ({ weakAreas }) => <P
   </Box>)}</Stack>}
 </Paper>
 
+const SelectedStudentStatistics: FC = () => {
+  const [classes, setClasses] = useState<AdminClassesWorkspace['classes']>([])
+  const [classesLoading, setClassesLoading] = useState(true)
+  const [classesError, setClassesError] = useState<string | null>(null)
+  const [classId, setClassId] = useState<number | ''>('')
+  const [statistics, setStatistics] = useState<ClassStatistics | null>(null)
+  const [statisticsLoading, setStatisticsLoading] = useState(false)
+  const [statisticsError, setStatisticsError] = useState<string | null>(null)
+  const [studentId, setStudentId] = useState<number | ''>('')
+
+  useEffect(() => {
+    let current = true
+    getAdminClassesWorkspace()
+      .then((workspace) => {
+        if (!current) return
+        setClasses(workspace.classes)
+        setClassId(workspace.classes[0]?.id ?? '')
+        setClassesError(null)
+      })
+      .catch((error) => { if (current) setClassesError(error instanceof Error ? error.message : 'Unable to load classes.') })
+      .finally(() => { if (current) setClassesLoading(false) })
+    return () => { current = false }
+  }, [])
+
+  useEffect(() => {
+    if (classId === '') {
+      setStatistics(null)
+      return
+    }
+    let current = true
+    setStatisticsLoading(true)
+    setStatistics(null)
+    getClassStatistics(classId)
+      .then((result) => {
+        if (!current) return
+        setStatistics(result)
+        setStudentId((selected) => result.students.some((student) => student.studentId === selected) ? selected : result.students[0]?.studentId ?? '')
+        setStatisticsError(null)
+      })
+      .catch((error) => { if (current) setStatisticsError(error instanceof Error ? error.message : 'Unable to load student statistics.') })
+      .finally(() => { if (current) setStatisticsLoading(false) })
+    return () => { current = false }
+  }, [classId])
+
+  const selectedStudent = statistics?.students.find((student) => student.studentId === studentId)
+  const selectedClass = classes.find((classRecord) => classRecord.id === classId)
+  const quizLessons = selectedStudent?.lessons.filter((lesson) => lesson.quizCount > 0 && lesson.averageScore !== null).map((lesson) => ({ title: lesson.title, score: lesson.averageScore ?? 0 })) ?? []
+  const strengths = [...quizLessons].filter((lesson) => lesson.score >= 70).sort((a, b) => b.score - a.score).slice(0, 3)
+  const needsAttention = [...quizLessons].filter((lesson) => lesson.score < 70).sort((a, b) => a.score - b.score).slice(0, 3)
+  const formatTime = (seconds: number) => seconds >= 3600 ? `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m` : `${Math.floor(seconds / 60)}m`
+  const averageQuizScore = selectedStudent?.averageQuizScore
+  const averageAttendance = selectedStudent?.attendanceRate
+
+  const insightList = (label: string, lessons: Array<{ title: string; score: number }>, color: 'success' | 'warning') => <Box><Typography variant="body2" sx={{ fontWeight: 700, color: `${color}.main`, mb: 1 }}>{label}</Typography><Stack spacing={1.1}>{lessons.map((lesson) => <Box key={lesson.title}><Stack direction="row" justifyContent="space-between" spacing={1} sx={{ mb: 0.4 }}><Typography variant="caption" noWrap>{lesson.title}</Typography><Typography variant="caption" sx={{ fontWeight: 700 }}>{lesson.score}%</Typography></Stack><LinearProgress color={color} variant="determinate" value={lesson.score} sx={{ height: 7, borderRadius: 4 }} /></Box>)}</Stack></Box>
+
+  return <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.5, md: 3 }, mb: 2.25, border: 1, borderColor: 'divider', borderRadius: 3.5, minWidth: 0 }}>
+    <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={1.5} sx={{ mb: 2.25 }}>
+      <Box><Typography component="h2" variant="h5" sx={{ fontWeight: 800, letterSpacing: '-.025em' }}>Student performance</Typography><Typography variant="body2" color="text.secondary">Focused learning insights for one student in a class.</Typography></Box>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: { xs: '100%', md: 'auto' } }}>
+        <FormControl size="small" sx={{ minWidth: { sm: 215 } }} disabled={classesLoading || classes.length === 0}><InputLabel id="overview-class-select-label">Class</InputLabel><Select labelId="overview-class-select-label" label="Class" value={classId} onChange={(event) => setClassId(Number(event.target.value))}>{classes.map((classRecord) => <MenuItem key={classRecord.id} value={classRecord.id}>{classRecord.title}</MenuItem>)}</Select></FormControl>
+        <FormControl size="small" sx={{ minWidth: { sm: 200 } }} disabled={!statistics?.students.length}><InputLabel id="overview-student-select-label">Student</InputLabel><Select labelId="overview-student-select-label" label="Student" value={studentId} onChange={(event) => setStudentId(Number(event.target.value))}>{(statistics?.students ?? []).map((student) => <MenuItem key={student.studentId} value={student.studentId}>{student.studentName}</MenuItem>)}</Select></FormControl>
+      </Stack>
+    </Stack>
+    {classesError ? <Alert severity="error">{classesError}</Alert> : classesLoading || statisticsLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><CircularProgress aria-label="Loading student performance" /></Box> : statisticsError ? <Alert severity="error">{statisticsError}</Alert> : !selectedClass ? <Typography color="text.secondary">No classes are available to report on yet.</Typography> : !selectedStudent ? <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}><Typography variant="subtitle1" sx={{ fontWeight: 700 }}>No enrolled students in {selectedClass.title}</Typography><Typography variant="body2" color="text.secondary">Student learning data will appear after someone joins this class.</Typography></Paper> : <Stack spacing={2.25}>
+      <Stack direction="row" alignItems="center" spacing={1}><Chip size="small" color="primary" variant="outlined" label={selectedClass.title} /><Typography variant="body2" color="text.secondary">{selectedStudent.studentName}</Typography></Stack>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: 1.25 }}>
+        <StatCard label="Class progress" value={`${selectedStudent.progressPercentage}%`} detail={`${selectedStudent.lessonsCompleted} of ${statistics?.lessonCount ?? 0} lessons completed`} icon={<AssessmentOutlinedIcon fontSize="small" />} tone="violet" />
+        <StatCard label="Quiz accuracy" value={averageQuizScore === null ? '—' : `${averageQuizScore ?? 0}%`} detail={`${selectedStudent.quizCount} submitted quizzes`} icon={<QuizOutlinedIcon fontSize="small" />} tone="blue" />
+        <StatCard label="Time spent" value={formatTime(selectedStudent.activeSeconds)} detail="Recorded learning activity" icon={<CalendarTodayOutlinedIcon fontSize="small" />} tone="teal" />
+        <StatCard label="Attendance" value={averageAttendance === null ? '—' : `${averageAttendance ?? 0}%`} detail={`${selectedStudent.presentCount} of ${selectedStudent.attendanceCount} sessions`} icon={<CheckCircleOutlineIcon fontSize="small" />} tone="amber" />
+      </Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.2fr .8fr' }, gap: 1.5 }}>
+        <Paper variant="outlined" sx={{ p: { xs: 1.75, sm: 2.25 }, borderRadius: 2.5 }}><Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>Lesson performance</Typography><Stack spacing={1.2}>{selectedStudent.lessons.map((lesson) => <Box key={lesson.lessonId}><Stack direction="row" justifyContent="space-between" spacing={1} sx={{ mb: 0.4 }}><Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{lesson.title}</Typography><Typography variant="caption" color="text.secondary">{lesson.type === 'quiz' ? lesson.averageScore === null ? 'No attempts' : `${lesson.averageScore}% accuracy` : lesson.completed ? 'Completed' : 'Not completed'}</Typography></Stack>{lesson.type === 'quiz' && lesson.averageScore !== null ? <LinearProgress color={lesson.averageScore >= 70 ? 'success' : 'warning'} variant="determinate" value={lesson.averageScore} sx={{ height: 7, borderRadius: 4 }} /> : <LinearProgress color={lesson.completed ? 'success' : 'primary'} variant="determinate" value={lesson.completed ? 100 : 0} sx={{ height: 7, borderRadius: 4 }} />}</Box>)}</Stack></Paper>
+        <Paper variant="outlined" sx={{ p: { xs: 1.75, sm: 2.25 }, borderRadius: 2.5 }}><Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>Learning insights</Typography>{quizLessons.length === 0 ? <Typography variant="body2" color="text.secondary">Quiz insights will appear after this student completes an assessment.</Typography> : <Stack spacing={2}>{strengths.length > 0 && insightList('Top strengths', strengths, 'success')}{needsAttention.length > 0 && insightList('Needs attention', needsAttention, 'warning')}</Stack>}</Paper>
+      </Box>
+    </Stack>}
+  </Paper>
+}
+
 const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
   const [overview, setOverview] = useState<AdminDashboardOverview | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -775,6 +854,7 @@ const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
       <StatCard label="Published courses" value={new Intl.NumberFormat('en-US').format(overview.publishedCourses)} detail={`${overview.draftCourses} course${overview.draftCourses === 1 ? '' : 's'} in draft`} icon={<SchoolOutlinedIcon fontSize="small" />} tone="violet" />
       <StatCard label="Active tutors" value={new Intl.NumberFormat('en-US').format(overview.activeTutors)} detail={`${overview.inactiveTutors} inactive tutor${overview.inactiveTutors === 1 ? '' : 's'}`} icon={<PersonOutlineIcon fontSize="small" />} tone="amber" />
     </Box>
+    <SelectedStudentStatistics />
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1.35fr) minmax(0, .9fr)' }, gap: 2.25, alignItems: 'start', minWidth: 0 }}>
       <AtRiskStudentsPanel students={atRiskStudents} loading={atRiskLoading} error={atRiskError} compact />
       <WeakAreasPanel weakAreas={overview.weakAreas} />
