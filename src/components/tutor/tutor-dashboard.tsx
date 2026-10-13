@@ -270,6 +270,27 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
     void load()
   }, [])
   useEffect(() => {
+    let isCurrent = true
+    const refreshClasses = async () => {
+      try {
+        const nextClasses = await getTutorClasses()
+        if (!isCurrent) return
+        setClasses(nextClasses)
+        setSelectedClassId((current) => nextClasses.some((classRecord) => classRecord.id === current) ? current : nextClasses[0]?.id ?? '')
+        setProgressTarget((current) => current?.type === 'class' && !nextClasses.some((classRecord) => classRecord.id === current.id) ? null : current)
+      } catch {
+        return
+      }
+    }
+    const timer = window.setInterval(() => { void refreshClasses() }, 30000)
+    window.addEventListener('focus', refreshClasses)
+    return () => {
+      isCurrent = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshClasses)
+    }
+  }, [])
+  useEffect(() => {
     const syncView = () => {
       setCurrentPath(window.location.pathname)
       setView(getTutorViewFromPath(window.location.pathname))
@@ -328,11 +349,15 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
         : progressTarget
           ? progressTarget.type === 'course' ? getTutorCourseStudents(progressTarget.id) : getTutorClassStudents(progressTarget.id)
           : null
-      if (!request) return
+      if (!request) {
+        setStudents([])
+        return
+      }
       setStudentsLoading(true)
       try {
         setStudents(await request)
       } catch (loadError) {
+        setStudents([])
         const message = loadError instanceof Error ? loadError.message : 'Unable to load students.'
         setError(message)
         toast.add({ type: 'error', title: 'Unable to load students', description: message })

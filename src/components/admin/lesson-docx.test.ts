@@ -87,6 +87,44 @@ describe('parseLessonParagraphs', () => {
     expect(result.fatalError).toBeNull()
   })
 
+  it('imports quiz image placeholders for questions, options, and explanations', () => {
+    const result = parseLessonParagraphs('quiz', [
+      ...questionTemplate('QUIZ'),
+      paragraph('Question 1', 2),
+      paragraph('Question: Which object is shown?'),
+      paragraph('Topic: Science'),
+      paragraph('Question image: [IMAGE: microscope view]'),
+      paragraph('A. Cell'),
+      paragraph('A image: [IMAGE: cell diagram]'),
+      paragraph('B. Star'),
+      paragraph('Correct: A'),
+      paragraph('Explanation: It shows a cell.'),
+      paragraph('Explanation image: [IMAGE: labeled cell]'),
+    ])
+
+    expect(result.questions[0]).toMatchObject({ questionImageMarker: 'microscope view', optionImageMarkers: ['cell diagram', undefined], explanationImageMarker: 'labeled cell' })
+    expect(result.fatalError).toBeNull()
+  })
+
+  it('imports embedded quiz images from labeled image lines', () => {
+    const imageUrl = 'data:image/png;base64,aGVsbG8='
+    const result = parseLessonParagraphs('quiz', [
+      ...questionTemplate('QUIZ'),
+      paragraph('Question 1', 2),
+      paragraph('Question: Which object is shown?'),
+      paragraph('Topic: Science'),
+      { text: 'Question image:', heading: null, parts: [{ type: 'text', text: 'Question image:' }, { type: 'image', imageUrl }] },
+      paragraph('A. Cell'),
+      { text: 'A image:', heading: null, parts: [{ type: 'text', text: 'A image:' }, { type: 'image', imageUrl }] },
+      paragraph('B. Star'),
+      paragraph('Correct: A'),
+      paragraph('Explanation: It shows a cell.'),
+    ])
+
+    expect(result.questions[0]).toMatchObject({ questionImage: imageUrl, optionImages: [imageUrl, undefined] })
+    expect(result.fatalError).toBeNull()
+  })
+
   it('rejects importing a Quiz template as Practice', () => {
     const result = parseLessonParagraphs('practice', [...questionTemplate('QUIZ'), ...validQuestion(1)])
 

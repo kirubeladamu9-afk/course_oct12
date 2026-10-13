@@ -10,7 +10,13 @@ export interface ImportedQuestion {
   topic: string
   options: string[]
   correctOption: number
+  questionImageMarker?: string
+  questionImage?: string
+  optionImageMarkers: Array<string | undefined>
+  optionImages?: Array<string | undefined>
   explanation: string
+  explanationImageMarker?: string
+  explanationImage?: string
 }
 
 export interface LessonImportPreview {
@@ -39,17 +45,21 @@ const questionTemplateParagraphs = (type: 'quiz' | 'practice') => {
   return [
     paragraph(`${name} template instructions`),
     paragraph('Replace the Heading 1 text with the lesson title. Keep each question as a Heading 2 named Question 1, Question 2, and so on.'),
-    paragraph('For every question, use one paragraph per line in this exact order: Question: text, Topic: name, options labeled A. and B. (add C. and more if needed), Correct: one option letter, and optional Explanation: text.'),
+    paragraph(type === 'quiz' ? 'For each question use: Question: text, Topic: name, optional Question image: [IMAGE: description], options A. and B. (add more if needed), optional A image: [IMAGE: description] after that option, Correct: one option letter, optional Explanation: text, and optional Explanation image: [IMAGE: description]. Image lines create upload slots in the import review.' : 'For every question, use one paragraph per line in this exact order: Question: text, Topic: name, options labeled A. and B. (add C. and more if needed), Correct: one option letter, and optional Explanation: text.'),
     paragraph('At least two non-empty options and exactly one valid Correct: letter are required. Empty question blocks are ignored. The filled first question is an example; replace it or remove it.'),
     paragraph(`LESSON TYPE: ${name.toUpperCase()}`),
     paragraph('[Enter lesson title]', HeadingLevel.HEADING_1),
     paragraph('Question 1', HeadingLevel.HEADING_2),
     paragraph('Question: What is 2 + 2?'),
     paragraph('Topic: Arithmetic'),
+    ...(type === 'quiz' ? [paragraph('Question image: [IMAGE: number line or equation]')] : []),
     paragraph('A. 3'),
+    ...(type === 'quiz' ? [paragraph('A image: [IMAGE: first answer illustration]')] : []),
     paragraph('B. 4'),
+    ...(type === 'quiz' ? [paragraph('B image: [IMAGE: correct answer illustration]')] : []),
     paragraph('Correct: B'),
     paragraph('Explanation: Four is the sum of two and two.'),
+    ...(type === 'quiz' ? [paragraph('Explanation image: [IMAGE: visual proof or worked solution]')] : []),
     paragraph('Question 2', HeadingLevel.HEADING_2),
     paragraph('Question:'),
     paragraph('Topic:'),
@@ -164,16 +174,51 @@ const parseArticle = (paragraphs: LessonParagraph[]): LessonImportPreview => {
   return { title, articleBody: articleBlocks.filter((block) => block.type !== 'image').map((block) => block.text).join('\n'), articleBlocks, questions: [], issues: [], fatalError: null }
 }
 
+const getImageMarker = (value: string) => value.match(/^\[IMAGE:\s*(.*?)\]$/i)?.[1].trim() || undefined
+
 const parseQuestionBlock = (heading: string, paragraphs: LessonParagraph[], issues: string[]) => {
   const number = Number(heading.match(/\d+/)?.[0] ?? 0)
   const labelValues = new Map<string, string[]>()
   const options: Array<{ label: string; value: string }> = []
+  const optionImageValues = new Map<string, string[]>()
   const lineKinds: string[] = []
+  let questionImageValues: string[] = []
+  let explanationImageValues: string[] = []
+  let questionImage: string | undefined
+  let explanationImage: string | undefined
+  const optionImages = new Map<string, string>()
+  const invalidImageMarkers: string[] = []
   let malformedOption = false
   let unexpectedLine = false
 
-  for (const { text: line } of paragraphs) {
-    if (!line) continue
+  for (const { text: line, parts } of paragraphs) {
+    const embeddedImage = parts?.find((part): part is Extract<LessonParagraphPart, { type: 'image' }> => part.type === 'image')
+    if (!line && !embeddedImage) continue
+    const imageLabelMatch = line.match(/^(Question|Explanation) image:\s*(.*)$/i)
+    if (imageLabelMatch) {
+      const key = imageLabelMatch[1].toLowerCase()
+      const value = imageLabelMatch[2].trim()
+      lineKinds.push(`${key}-image`)
+      if (value && !getImageMarker(value) && !embeddedImage) invalidImageMarkers.push(`${key} image`)
+      if (key === 'question') {
+        questionImageValues.push(value || embeddedImage?.marker || '')
+        questionImage = embeddedImage?.imageUrl ?? questionImage
+      } else {
+        explanationImageValues.push(value || embeddedImage?.marker || '')
+        explanationImage = embeddedImage?.imageUrl ?? explanationImage
+      }
+      continue
+    }
+    const optionImageMatch = line.match(/^([A-Z]) image:\s*(.*)$/i)
+    if (optionImageMatch) {
+      const key = optionImageMatch[1].toUpperCase()
+      const value = optionImageMatch[2].trim()
+      lineKinds.push('option-image')
+      if (value && !getImageMarker(value) && !embeddedImage) invalidImageMarkers.push(`${key} image`)
+      optionImageValues.set(key, [...(optionImageValues.get(key) ?? []), value || embeddedImage?.marker || ''])
+      if (embeddedImage?.imageUrl) optionImages.set(key, embeddedImage.imageUrl)
+      continue
+    }
     const labelMatch = line.match(/^(Question|Topic|Correct|Explanation):\s*(.*)$/i)
     if (labelMatch) {
       const key = labelMatch[1].toLowerCase()
@@ -200,21 +245,32 @@ const parseQuestionBlock = (heading: string, paragraphs: LessonParagraph[], issu
   const topicValues = labelValues.get('topic') ?? []
   const correctValues = labelValues.get('correct') ?? []
   const explanationValues = labelValues.get('explanation') ?? []
-  const allEmpty = [...questionValues, ...topicValues, ...options.map(({ value }) => value), ...correctValues, ...explanationValues].every((value) => !value || isPlaceholder(value)) && !malformedOption && !unexpectedLine
+  const imageValues = [...questionImageValues, ...explanationImageValues, ...Array.from(optionImageValues.values()).flat()]
+  const allValues = [...questionValues, ...topicValues, ...options.map(({ value }) => value), ...correctValues, ...explanationValues, ...imageValues]
+  const allEmpty = allValues.every((value) => !value || isPlaceholder(value)) && !malformedOption && !unexpectedLine
   if (allEmpty) return null
 
   const errors: string[] = []
   if (questionValues.length !== 1 || !questionValues[0] || isPlaceholder(questionValues[0])) errors.push(questionValues.length > 1 ? 'has multiple Question: lines' : 'has no non-empty Question: line')
   if (topicValues.length !== 1 || !topicValues[0] || isPlaceholder(topicValues[0])) errors.push(topicValues.length > 1 ? 'has multiple Topic: lines' : 'has no non-empty Topic: line')
   if (lineKinds[0] !== 'question' || lineKinds[1] !== 'topic') errors.push('must start with Question: then Topic: before the answer options')
+  const lastOptionLineIndex = Math.max(lineKinds.lastIndexOf('option'), lineKinds.lastIndexOf('option-image'))
   const correctLineIndex = lineKinds.indexOf('correct')
-  if (correctLineIndex !== -1 && correctLineIndex !== lineKinds.lastIndexOf('option') + 1) errors.push('must place Correct: immediately after the answer options')
-  if (lineKinds.includes('explanation') && lineKinds.indexOf('explanation') !== lineKinds.length - 1) errors.push('must place optional Explanation: after Correct:')
+  if (correctLineIndex !== -1 && correctLineIndex !== lastOptionLineIndex + 1) errors.push('must place Correct: immediately after the answer options and their image slots')
+  if (lineKinds.includes('explanation-image') && (lineKinds.lastIndexOf('explanation-image') !== lineKinds.length - 1 || !lineKinds.includes('explanation'))) errors.push('must place Explanation image: after Explanation:')
+  if (lineKinds.includes('explanation') && lineKinds.indexOf('explanation') < correctLineIndex) errors.push('must place optional Explanation: after Correct:')
   if (options.filter(({ value }) => value && !isPlaceholder(value)).length < 2) errors.push('must have at least two non-empty options')
   if (malformedOption) errors.push('has a malformed option list; use A. option text, B. option text, and so on')
   if (new Set(options.map(({ label }) => label)).size !== options.length) errors.push('has duplicate option labels')
   if (options.some(({ value }) => !value || isPlaceholder(value))) errors.push('has an empty option')
   if (options.some(({ label }, index) => label !== String.fromCharCode(65 + index))) errors.push('option labels must be consecutive starting with A.')
+  if (questionImageValues.length > 1) errors.push('has multiple Question image: lines')
+  if (explanationImageValues.length > 1) errors.push('has multiple Explanation image: lines')
+  for (const [label, values] of optionImageValues) {
+    if (!options.some((option) => option.label === label)) errors.push(`has an image slot for missing option ${label}`)
+    if (values.length > 1) errors.push(`has multiple ${label} image: lines`)
+  }
+  if (invalidImageMarkers.length) errors.push(`${invalidImageMarkers.join(' and ')} must use [IMAGE: description] or contain an embedded image`)
   if (correctValues.length > 1) errors.push('has multiple Correct: lines; mark exactly one option as correct')
   else if (!correctValues[0]) errors.push('has no option marked as correct; add one Correct: letter line')
   const correctOption = options.findIndex(({ label }) => label === correctValues[0]?.toUpperCase())
@@ -225,7 +281,8 @@ const parseQuestionBlock = (heading: string, paragraphs: LessonParagraph[], issu
     issues.push(`Question ${number} ${errors.join('; ')}.`)
     return null
   }
-  return { number, question: questionValues[0], topic: topicValues[0], options: options.map(({ value }) => value), correctOption, explanation: explanationValues[0] ?? '' }
+  const optionImageMarkers = options.map(({ label }) => getImageMarker(optionImageValues.get(label)?.[0] ?? '') ?? (optionImageValues.get(label)?.[0] || undefined))
+  return { number, question: questionValues[0], topic: topicValues[0], options: options.map(({ value }) => value), correctOption, questionImageMarker: getImageMarker(questionImageValues[0] ?? '') ?? (questionImageValues[0] || undefined), questionImage, optionImageMarkers, optionImages: options.map(({ label }) => optionImages.get(label)), explanation: explanationValues[0] ?? '', explanationImageMarker: getImageMarker(explanationImageValues[0] ?? '') ?? (explanationImageValues[0] || undefined), explanationImage }
 }
 
 const parseQuizOrPractice = (paragraphs: LessonParagraph[], type: 'quiz' | 'practice'): LessonImportPreview => {
@@ -280,7 +337,7 @@ const parseLessonXml = async (type: ImportableLessonType, xml: string, archive: 
   const xmlDocument = new DOMParser().parseFromString(xml, 'application/xml')
   if (xmlDocument.querySelector('parsererror')) return preview('This DOCX contains invalid document XML. Download a fresh template and try again.')
   const relationships = new Map<string, { target: string; external: boolean }>()
-  if (type === 'article') {
+  if (type !== 'practice') {
     const relationshipFile = archive.file('word/_rels/document.xml.rels')
     if (relationshipFile) {
       const relationshipXml = new DOMParser().parseFromString(await relationshipFile.async('text'), 'application/xml')
@@ -296,7 +353,7 @@ const parseLessonXml = async (type: ImportableLessonType, xml: string, archive: 
     const outline = element.getElementsByTagNameNS(wordNamespace, 'outlineLvl')[0]?.getAttributeNS(wordNamespace, 'val')
     const styleLevel = style?.match(/^heading(\d+)$/)?.[1]
     const heading = styleLevel ? Number(styleLevel) : outline !== undefined ? Number(outline) + 1 : null
-    if (type !== 'article') {
+    if (type === 'practice') {
       const text = Array.from(element.getElementsByTagNameNS(wordNamespace, 't')).map((run) => run.textContent ?? '').join('').replace(/\u00a0/g, ' ').trim()
       return { text, heading }
     }

@@ -1253,8 +1253,9 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
 
   useEffect(() => {
     let isCurrent = true
-    getMyEnrollments()
-      .then((records) => {
+    const loadEnrollments = async () => {
+      try {
+        const records = await getMyEnrollments()
         if (!isCurrent) return
         const completedByCourse = Object.fromEntries(records.filter((record) => record.completedLessonIds.length > 0).map((record) => [getEnrollmentContentId(record), record.completedLessonIds]))
         const startedByCourse = Object.fromEntries(records.filter((record) => record.started).map((record) => [getEnrollmentContentId(record), true]))
@@ -1266,17 +1267,20 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
         setQuizResults(resultsByCourse)
         setEnrollments(mapMyEnrollments(records, currentUserId))
         setEnrollmentError(null)
-      })
-      .catch((error) => {
+      } catch (error) {
         if (!isCurrent) return
         setEnrollmentError(error instanceof Error ? error.message : 'Unable to load your enrollments.')
-      })
-      .finally(() => {
+      } finally {
         if (isCurrent) setIsLoadingEnrollments(false)
-      })
-
+      }
+    }
+    void loadEnrollments()
+    const timer = window.setInterval(() => { void loadEnrollments() }, 30000)
+    window.addEventListener('focus', loadEnrollments)
     return () => {
       isCurrent = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', loadEnrollments)
     }
   }, [currentUserId])
 
