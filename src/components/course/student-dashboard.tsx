@@ -503,9 +503,18 @@ const StudentCalendarView: FC<{ enrollments: DashboardEnrollment[]; now: Date; o
   />
 }
 
-const WeakAreasPanel: FC<{ enrollments: Array<Pick<DashboardEnrollment, 'id' | 'item_id' | 'weakAreas'>>; onOpenCourse: (courseId: number, lessonId?: number) => void }> = ({ enrollments, onOpenCourse }) => {
+const WeakAreasPanel: FC<{ enrollments: Array<Pick<DashboardEnrollment, 'id' | 'item_id' | 'weakAreas'> & Partial<Pick<DashboardEnrollment, 'course' | 'classRecord' | 'quizResults'>>>; onOpenCourse: (courseId: number, lessonId?: number) => void }> = ({ enrollments, onOpenCourse }) => {
   const areas = enrollments.flatMap((enrollment) => enrollment.weakAreas.map((area) => ({ enrollment, area })))
-  return <Paper elevation={0} sx={{ p: 2.5, mb: 3, border: 1, borderColor: areas.length ? 'warning.light' : 'divider', backgroundColor: areas.length ? (theme) => alpha(theme.palette.warning.main, theme.palette.mode === 'dark' ? 0.16 : 0.08) : 'background.paper' }}><Typography component="h2" variant="h6" sx={{ mb: 0.5 }}>Weak Areas</Typography><Typography color="text.secondary" variant="body2" sx={{ mb: areas.length ? 2 : 0 }}>{areas.length ? 'These topics are below 60% accuracy. Practice them again to build confidence.' : 'No weak areas detected yet. Complete quizzes and practice exercises to see topic-level results here.'}</Typography>{areas.length > 0 && <Stack spacing={1}>{areas.map(({ enrollment, area }) => <Stack key={`${enrollment.id}-${area.topic}`} direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1} sx={{ p: 1.25, borderRadius: 1.5, backgroundColor: 'background.paper' }}><Box><Stack direction="row" spacing={1} alignItems="center"><Typography sx={{ fontWeight: 700 }}>{area.topic}</Typography><Chip size="small" color="warning" label={`${area.accuracy}% accuracy`} /></Stack><Typography variant="body2" color="text.secondary">{area.correct} of {area.total} answers correct · Practice this topic again.</Typography></Box>{area.practiceLessons[0] && <Button size="small" variant="outlined" onClick={() => onOpenCourse(enrollment.item_id, area.practiceLessons[0].lessonId)}>Practice {area.practiceLessons[0].lessonTitle}</Button>}</Stack>)}</Stack>}</Paper>
+  const failedQuizzes = enrollments.flatMap((enrollment) => {
+    const course = enrollment.course ?? enrollment.classRecord?.course
+    if (!course || !enrollment.quizResults) return []
+    return getLessons(course).flatMap((lesson) => {
+      const result = enrollment.quizResults?.[lesson.id]
+      return lesson.type === 'quiz' && result && !result.passed ? [{ enrollment, course, lesson, result }] : []
+    })
+  })
+  const hasWeakSignals = areas.length > 0 || failedQuizzes.length > 0
+  return <Paper elevation={0} sx={{ p: 2.5, mb: 3, border: 1, borderColor: hasWeakSignals ? 'warning.light' : 'divider', backgroundColor: hasWeakSignals ? (theme) => alpha(theme.palette.warning.main, theme.palette.mode === 'dark' ? 0.16 : 0.08) : 'background.paper' }}><Typography component="h2" variant="h6" sx={{ mb: 0.5 }}>Weak Areas</Typography><Typography color="text.secondary" variant="body2" sx={{ mb: hasWeakSignals ? 2 : 0 }}>{areas.length ? 'These topics are below 60% accuracy. Practice them again to build confidence.' : failedQuizzes.length ? 'Failed quiz attempts need review. Retake them to strengthen these topics.' : 'No weak areas detected yet. Complete quizzes and practice exercises to see topic-level results here.'}</Typography>{failedQuizzes.length > 0 && <Stack spacing={1} sx={{ mb: areas.length ? 2 : 0 }}>{failedQuizzes.map(({ enrollment, course, lesson, result }) => { const retakeAllowed = Boolean(result.retakeApproved || (!result.disqualified && !result.violationCount)); return <Stack key={`${enrollment.id}-${lesson.id}`} direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1} sx={{ p: 1.25, borderRadius: 1.5, backgroundColor: 'background.paper' }}><Box><Stack direction="row" spacing={1} alignItems="center"><Typography sx={{ fontWeight: 700 }}>{lesson.topicTitle ?? lesson.title}</Typography><Chip size="small" color="warning" label={`Failed · ${result.score}%`} /></Stack><Typography variant="body2" color="text.secondary">{lesson.title} · Review this quiz to improve your result.</Typography></Box><Button size="small" variant="outlined" onClick={() => onOpenCourse(course.id, lesson.id)}>{retakeAllowed ? `Retake Quiz: ${lesson.title}` : `Review Quiz: ${lesson.title}`}</Button></Stack> })}</Stack>}{areas.length > 0 && <Stack spacing={1}>{areas.map(({ enrollment, area }) => <Stack key={`${enrollment.id}-${area.topic}`} direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1} sx={{ p: 1.25, borderRadius: 1.5, backgroundColor: 'background.paper' }}><Box><Stack direction="row" spacing={1} alignItems="center"><Typography sx={{ fontWeight: 700 }}>{area.topic}</Typography><Chip size="small" color="warning" label={`${area.accuracy}% accuracy`} /></Stack><Typography variant="body2" color="text.secondary">{area.correct} of {area.total} answers correct · Practice this topic again.</Typography></Box>{area.practiceLessons[0] && <Button size="small" variant="outlined" onClick={() => onOpenCourse(enrollment.item_id, area.practiceLessons[0].lessonId)}>Practice {area.practiceLessons[0].lessonTitle}</Button>}</Stack>)}</Stack>}</Paper>
 }
 
 const OverviewView: FC<{ enrollments: DashboardEnrollment[]; now: Date; onSelectView: (view: DashboardView) => void; onOpenCourse: (courseId: number, lessonId?: number) => void; gamificationData: GamificationData }> = ({ enrollments, now, onSelectView, onOpenCourse, gamificationData }) => {
@@ -518,9 +527,18 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; now: Date; onSelect
     tutor: enrollment.course.tutor,
     progress: enrollment.progress,
   }] : [])
-  const latestQuizScores = courseEnrollments.flatMap((enrollment) => Object.values(enrollment.quizResults).map((result) => result.score))
+  const latestQuizResults = courseEnrollments.flatMap((enrollment) => {
+    if (!enrollment.course) return []
+    return getLessons(enrollment.course).flatMap((lesson) => {
+      const result = enrollment.quizResults[lesson.id]
+      return lesson.type === 'quiz' && result ? [{ ...result, passThreshold: Number.isInteger(lesson.passThreshold) ? lesson.passThreshold! : 70 }] : []
+    })
+  })
+  const latestQuizScores = latestQuizResults.map((result) => result.score)
   const quizCount = latestQuizScores.length
   const averageQuizScore = quizCount ? Math.round(latestQuizScores.reduce((total, score) => total + score, 0) / quizCount) : null
+  const averagePassThreshold = quizCount ? latestQuizResults.reduce((total, result) => total + result.passThreshold, 0) / quizCount : null
+  const quizAverageNeedsAttention = latestQuizResults.some((result) => !result.passed) || (averageQuizScore !== null && averagePassThreshold !== null && averageQuizScore < averagePassThreshold)
   const pendingCount = enrollments.filter((enrollment) => enrollment.type === 'class' && enrollment.status === 'pending_schedule').length
   const nextSession = enrollments
     .filter((enrollment) => enrollment.type === 'class' && enrollment.status === 'active' && enrollment.classRecord?.status === 'open')
@@ -539,6 +557,7 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; now: Date; onSelect
     lessonCount={gamificationData.stats.lesson_count}
     averageQuizScore={averageQuizScore}
     quizCount={quizCount}
+    quizAverageNeedsAttention={quizAverageNeedsAttention}
     learningStreak={gamificationData.stats.current_streak}
     session={nextSession ? { title: nextSession.lesson.title, courseTitle: nextSession.classRecord.course?.title ?? nextSession.classRecord.title, startsAt: nextSession.lesson.scheduledAt! } : undefined}
     onOpenCourse={(courseId) => onOpenCourse(courseId)}
@@ -561,6 +580,7 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
         const course = enrollment.course!
         const completed = completedLessons[course.id]
         const progress = completed === undefined ? enrollment.progress : getCourseProgress(course, completed)
+        const grade = getEnrollmentOverallGrade(enrollment, progress)
         return <Card key={enrollment.id} elevation={0} sx={{ border: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column' }}>
           <Box sx={{ minHeight: 110, p: 2.5, display: 'flex', alignItems: 'flex-end', background: 'linear-gradient(135deg, rgba(16, 125, 111, 0.16), rgba(16, 125, 111, 0.04))' }}><MenuBookOutlinedIcon color="primary" sx={{ fontSize: 38 }} /></Box>
           <CardContent sx={{ display: 'flex', flex: 1, flexDirection: 'column' }}>
@@ -568,7 +588,7 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
             <Typography variant="h6" sx={{ mb: 1 }}>{course.title}</Typography>
             <Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Tutor: {course.tutor}</Typography>
             <Typography color="text.secondary" variant="body2" sx={{ mb: 1 }}>Time spent: {formatTimeSpent(enrollment.timeSpentSeconds)}</Typography>
-            <Box sx={{ mb: 2 }}><OverallGradeValue grade={getEnrollmentOverallGrade(enrollment, progress)} /></Box>
+            <Box sx={{ mb: 2 }}><OverallGradeValue grade={grade} />{progress === 100 && grade.letter === 'F' && <Alert severity="warning" sx={{ mt: 1 }}>Course complete, but your grade needs improvement — review quiz results to raise it.</Alert>}</Box>
             <Box sx={{ mt: 'auto' }}><Stack direction="row" justifyContent="space-between" sx={{ mb: 0.75 }}><Typography variant="body2">Progress</Typography><Typography variant="body2" color="primary.main" sx={{ fontWeight: 700 }}>{progress}%</Typography></Stack><LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4, mb: 2 }} /><Button fullWidth variant="contained" onClick={() => onOpenCourse(course.id)}>{progress ? 'Continue course' : 'Start course'}</Button></Box>
           </CardContent>
         </Card>

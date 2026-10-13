@@ -9,6 +9,7 @@ import LocalFireDepartmentOutlinedIcon from '@mui/icons-material/LocalFireDepart
 import MenuBookOutlinedIcon from '@mui/icons-material/MenuBookOutlined'
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded'
 import QuizOutlinedIcon from '@mui/icons-material/QuizOutlined'
+import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
 import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
 
 interface OverviewCourse {
@@ -58,6 +59,7 @@ interface StudentDashboardOverviewProps {
   lessonCount: number
   averageQuizScore: number | null
   quizCount: number
+  quizAverageNeedsAttention: boolean
   learningStreak: number
   session?: OverviewSession
   onOpenCourse: (courseId: number) => void
@@ -65,7 +67,7 @@ interface StudentDashboardOverviewProps {
   children: ReactNode
 }
 
-const StudentDashboardOverview = ({ displayName, courses, lessonCount, averageQuizScore, quizCount, learningStreak, session, onOpenCourse, onSelectView, children }: StudentDashboardOverviewProps) => {
+const StudentDashboardOverview = ({ displayName, courses, lessonCount, averageQuizScore, quizCount, quizAverageNeedsAttention, learningStreak, session, onOpenCourse, onSelectView, children }: StudentDashboardOverviewProps) => {
   const featuredCourse = courses[0]
 
   return <Box sx={{ maxWidth: 1260, mx: 'auto', pb: 2 }}>
@@ -124,7 +126,7 @@ const StudentDashboardOverview = ({ displayName, courses, lessonCount, averageQu
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.25, sm: 1.75 }, mb: 2.25 }}>
       <OverviewMetric label="Active courses" value={String(courses.length)} detail="In your learning plan" icon={<MenuBookOutlinedIcon fontSize="small" />} tone="teal" />
       <OverviewMetric label="Lessons completed" value={String(lessonCount)} detail="Keep the streak going" icon={<CheckCircleOutlineRoundedIcon fontSize="small" />} tone="blue" />
-      <OverviewMetric label="Quiz average" value={averageQuizScore === null ? '—' : `${averageQuizScore}%`} detail={quizCount ? `From ${quizCount} completed ${quizCount === 1 ? 'quiz' : 'quizzes'}` : 'No completed quizzes yet'} icon={<QuizOutlinedIcon fontSize="small" />} tone="violet" />
+      <OverviewMetric label="Quiz average" value={averageQuizScore === null ? '—' : `${averageQuizScore}%`} detail={quizAverageNeedsAttention ? 'One or more quizzes need review' : quizCount ? `From ${quizCount} completed ${quizCount === 1 ? 'quiz' : 'quizzes'}` : 'No completed quizzes yet'} icon={quizAverageNeedsAttention ? <WarningAmberOutlinedIcon fontSize="small" /> : <QuizOutlinedIcon fontSize="small" />} tone={quizAverageNeedsAttention ? 'amber' : 'violet'} />
       <OverviewMetric label="Learning streak" value={`${learningStreak} ${learningStreak === 1 ? 'day' : 'days'}`} detail="Your learning habit is growing" icon={<LocalFireDepartmentOutlinedIcon fontSize="small" />} tone="amber" />
     </Box>
 
