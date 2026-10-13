@@ -3538,6 +3538,79 @@ const refreshClassStatus = async (id) => {
   return readAdminClass(id)
 }
 
+app.get('/api/admin/classes/:id/statistics', requireAdminOrTutor, async (request, response) => {
+  const classId = parseCourseId(request.params.id)
+  if (classId === null) return response.status(400).json({ message: 'Invalid class id.' })
+  const [tutor] = request.userRole === 'tutor'
+    ? await sql`
+      SELECT tutors.id
+      FROM tutors
+      INNER JOIN users ON LOWER(TRIM(users.email)) = LOWER(TRIM(tutors.email))
+      WHERE users.id = ${request.userId}
+    `
+    : [null]
+  if (request.userRole === 'tutor' && !tutor) return response.status(403).json({ message: 'Tutor profile not found.' })
+  const tutorCondition = tutor ? sql`AND classes.tutor_id = ${tutor.id}` : sql``
+  const [classRecord] = await sql`SELECT id FROM classes WHERE id = ${classId} AND published = true ${tutorCondition}`
+  if (!classRecord) return response.status(404).json({ message: 'Class not found.' })
+
+  const [lessonTotals] = await sql`
+    SELECT COUNT(*)::INTEGER AS "lessonCount",
+           COUNT(*) FILTER (WHERE lesson.value->>'type' = 'live')::INTEGER AS "liveLessonCount"
+    FROM classes
+    CROSS JOIN LATERAL jsonb_array_elements(COALESCE(classes.modules, '[]'::jsonb)) module(value)
+    CROSS JOIN LATERAL jsonb_array_elements(COALESCE(module.value->'lessons', '[]'::jsonb)) lesson(value)
+    WHERE classes.id = ${classId}
+  `
+  const students = await sql`
+    WITH class_lessons AS (
+      SELECT (lesson.value->>'id')::BIGINT AS lesson_id,
+             COALESCE(lesson.value->>'title', 'Lesson') AS title,
+             COALESCE(lesson.value->>'type', 'lesson') AS type
+      FROM classes
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(classes.modules, '[]'::jsonb)) module(value)
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(module.value->'lessons', '[]'::jsonb)) lesson(value)
+      WHERE classes.id = ${classId}
+    )
+    SELECT enrollments.id::INTEGER AS "enrollmentId",
+           students.id::INTEGER AS "studentId",
+           COALESCE(NULLIF(users.name, ''), students.full_name) AS "studentName",
+           (SELECT COUNT(*)::INTEGER FROM class_lessons lesson INNER JOIN student_lesson_progress progress ON progress.enrollment_id = enrollments.id AND progress.lesson_id = lesson.lesson_id WHERE progress.completed_at IS NOT NULL) AS "lessonsCompleted",
+           (SELECT COUNT(*)::INTEGER FROM quiz_attempts attempts WHERE attempts.enrollment_id = enrollments.id AND attempts.submitted_at IS NOT NULL) AS "quizCount",
+           (SELECT AVG(attempts.score)::FLOAT FROM quiz_attempts attempts WHERE attempts.enrollment_id = enrollments.id AND attempts.submitted_at IS NOT NULL) AS "averageQuizScore",
+           (SELECT COALESCE(SUM(progress.active_seconds), 0)::INTEGER FROM student_lesson_progress progress WHERE progress.enrollment_id = enrollments.id) AS "activeSeconds",
+           (SELECT COUNT(*) FILTER (WHERE attendance.status = 'Present')::INTEGER FROM class_attendance attendance WHERE attendance.enrollment_id = enrollments.id) AS "presentCount",
+           (SELECT COUNT(*)::INTEGER FROM class_attendance attendance WHERE attendance.enrollment_id = enrollments.id) AS "attendanceCount",
+           CASE WHEN (SELECT COUNT(*) FROM class_attendance attendance WHERE attendance.enrollment_id = enrollments.id) = 0 THEN NULL
+                ELSE ROUND((SELECT COUNT(*) FILTER (WHERE attendance.status = 'Present')::NUMERIC FROM class_attendance attendance WHERE attendance.enrollment_id = enrollments.id) * 100 / (SELECT COUNT(*)::NUMERIC FROM class_attendance attendance WHERE attendance.enrollment_id = enrollments.id))::INTEGER END AS "attendanceRate",
+           CASE WHEN (SELECT COUNT(*) FROM class_lessons) = 0 THEN 0
+                ELSE ROUND((SELECT COUNT(*)::NUMERIC FROM class_lessons lesson INNER JOIN student_lesson_progress progress ON progress.enrollment_id = enrollments.id AND progress.lesson_id = lesson.lesson_id WHERE progress.completed_at IS NOT NULL) * 100 / (SELECT COUNT(*)::NUMERIC FROM class_lessons))::INTEGER END AS "progressPercentage",
+           COALESCE((
+             SELECT jsonb_agg(jsonb_build_object(
+               'lessonId', lesson.lesson_id,
+               'title', lesson.title,
+               'type', lesson.type,
+               'completed', progress.completed_at IS NOT NULL,
+               'quizCount', COALESCE(quiz_totals.count, 0),
+               'averageScore', quiz_totals.average_score
+             ) ORDER BY lesson.lesson_id)
+             FROM class_lessons lesson
+             LEFT JOIN student_lesson_progress progress ON progress.enrollment_id = enrollments.id AND progress.lesson_id = lesson.lesson_id
+             LEFT JOIN LATERAL (
+               SELECT COUNT(*)::INTEGER AS count, AVG(attempts.score)::FLOAT AS average_score
+               FROM quiz_attempts attempts
+               WHERE attempts.enrollment_id = enrollments.id AND attempts.lesson_id = lesson.lesson_id AND attempts.submitted_at IS NOT NULL
+             ) quiz_totals ON true
+           ), '[]'::jsonb) AS lessons
+    FROM enrollments
+    INNER JOIN students ON students.id = enrollments.student_id
+    INNER JOIN users ON users.id = students.user_id
+    WHERE enrollments.class_id = ${classId} AND enrollments.class_status = 'enrolled'
+    ORDER BY "studentName"
+  `
+  return response.json({ ...lessonTotals, students })
+})
+
 app.get('/api/admin/classes/:id/leaderboard', requireAdminOrTutor, async (request, response) => {
   const classId = parseCourseId(request.params.id)
   if (classId === null) return response.status(400).json({ message: 'Invalid class id.' })

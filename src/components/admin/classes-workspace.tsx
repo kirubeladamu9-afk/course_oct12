@@ -3,6 +3,9 @@ import Avatar from '@mui/material/Avatar'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
 import Chip from '@mui/material/Chip'
+import CircularProgress from '@mui/material/CircularProgress'
+import Alert from '@mui/material/Alert'
+import LinearProgress from '@mui/material/LinearProgress'
 import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
@@ -34,7 +37,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { type FC, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from '@/components/toast'
 import { navigateTo } from '@/lib/navigation'
-import { assignAdminClass, createAdminClass, deleteAdminClass, getClassLeaderboard, getAdminClassesWorkspace, removeAdminClassEnrollment, updateAdminClass, updateAdminClassEnrollment, type ClassLeaderboardEntry } from '@/services/api'
+import { assignAdminClass, createAdminClass, deleteAdminClass, getClassLeaderboard, getClassStatistics, getAdminClassesWorkspace, removeAdminClassEnrollment, updateAdminClass, updateAdminClassEnrollment, type ClassLeaderboardEntry, type ClassStatistics } from '@/services/api'
 import { getNextLessonId, type AdminCourse, type AdminLesson, type AdminModule, type LessonType } from './admin-data'
 import { CourseEditor } from './admin-dashboard'
 import AdminDataTable, { type DataColumn } from './admin-data-table'
@@ -315,11 +318,84 @@ export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boole
   )
 }
 
+const ClassStatisticsPanel: FC<{ statistics: ClassStatistics | null; loading: boolean; error: string | null }> = ({ statistics, loading, error }) => {
+  const [studentFilter, setStudentFilter] = useState('all')
+  const students = statistics?.students ?? []
+  const selectedStudent = students.find((student) => String(student.studentId) === studentFilter)
+  const visibleStudents = selectedStudent ? [selectedStudent] : students
+  const average = (values: Array<number | null>) => {
+    const available = values.filter((value): value is number => value !== null)
+    return available.length ? Math.round(available.reduce((total, value) => total + value, 0) / available.length) : null
+  }
+  const averageProgress = average(students.map((student) => student.progressPercentage))
+  const averageQuizScore = average(students.map((student) => student.averageQuizScore))
+  const averageAttendance = average(students.map((student) => student.attendanceRate))
+  const displayedQuizScore = selectedStudent ? selectedStudent.averageQuizScore : averageQuizScore
+  const displayedAttendance = selectedStudent ? selectedStudent.attendanceRate : averageAttendance
+  const totalQuizzes = students.reduce((total, student) => total + student.quizCount, 0)
+  const lessonPerformance = (selectedStudent ? selectedStudent.lessons : (statistics?.students ?? []).flatMap((student) => student.lessons))
+    .filter((lesson) => lesson.quizCount > 0 && lesson.averageScore !== null)
+    .reduce((results, lesson) => {
+      const current = results.get(lesson.lessonId) ?? { lessonId: lesson.lessonId, title: lesson.title, total: 0, attempts: 0 }
+      current.total += (lesson.averageScore ?? 0) * lesson.quizCount
+      current.attempts += lesson.quizCount
+      results.set(lesson.lessonId, current)
+      return results
+    }, new Map<number, { lessonId: number; title: string; total: number; attempts: number }>())
+  const performanceRows = Array.from(lessonPerformance.values()).map((lesson) => ({ ...lesson, score: Math.round(lesson.total / lesson.attempts) })).sort((a, b) => b.score - a.score)
+  const strengths = performanceRows.filter((lesson) => lesson.score >= 80).slice(0, 3)
+  const needsAttention = performanceRows.filter((lesson) => lesson.score < 70).sort((a, b) => a.score - b.score).slice(0, 3)
+  const minutes = (seconds: number) => seconds >= 3600 ? `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m` : `${Math.floor(seconds / 60)}m`
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 7 }}><CircularProgress aria-label="Loading class statistics" /></Box>
+  if (error) return <Alert severity="error">{error}</Alert>
+  if (!statistics || students.length === 0) return <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}><Typography variant="h6" sx={{ mb: 0.5 }}>No enrolled students yet</Typography><Typography color="text.secondary">Student learning statistics will appear here when this class has an enrolled student.</Typography></Paper>
+
+  const metricCard = (label: string, value: string, detail: string, color: string) => <Paper key={label} elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 2.5, minWidth: 0 }}><Typography variant="body2" color="text.secondary">{label}</Typography><Typography variant="h5" sx={{ mt: 0.5, fontWeight: 800, color }}>{value}</Typography><Typography variant="caption" color="text.secondary">{detail}</Typography></Paper>
+  const progressBar = (score: number) => <Box sx={{ height: 7, borderRadius: 5, bgcolor: 'action.hover', overflow: 'hidden', flex: 1 }}><Box sx={{ width: `${Math.max(0, Math.min(score, 100))}%`, height: '100%', borderRadius: 5, bgcolor: score >= 70 ? 'success.main' : 'warning.main' }} /></Box>
+
+  return <Stack spacing={2.5}>
+    <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} justifyContent="space-between" spacing={1.5}>
+      <Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Student performance</Typography><Typography variant="body2" color="text.secondary">Compare the whole class or focus on one student.</Typography></Box>
+      <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 230 } }}><InputLabel id="class-student-filter-label">Student view</InputLabel><Select labelId="class-student-filter-label" label="Student view" value={studentFilter} onChange={(event) => setStudentFilter(event.target.value)}><MenuItem value="all">All students ({students.length})</MenuItem>{students.map((student) => <MenuItem key={student.studentId} value={String(student.studentId)}>{student.studentName}</MenuItem>)}</Select></FormControl>
+    </Stack>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: 1.25 }}>
+      {metricCard('Students', selectedStudent ? '1' : String(students.length), selectedStudent ? selectedStudent.studentName : 'Enrolled in this class', 'primary.main')}
+      {metricCard('Average progress', `${selectedStudent?.progressPercentage ?? averageProgress ?? 0}%`, `${statistics.lessonCount} curriculum lessons`, 'info.main')}
+      {metricCard('Quiz average', displayedQuizScore === null ? '—' : `${displayedQuizScore}%`, `${selectedStudent?.quizCount ?? totalQuizzes} submitted attempts`, 'secondary.main')}
+      {metricCard('Attendance', displayedAttendance === null ? '—' : `${displayedAttendance}%`, `${statistics.liveLessonCount} live sessions`, 'success.main')}
+    </Box>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.2fr .8fr' }, gap: 2 }}>
+      <Paper variant="outlined" sx={{ p: { xs: 1.75, sm: 2.25 }, borderRadius: 2.5 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>{selectedStudent ? 'Lesson performance' : 'Student progress'}</Typography>
+        {selectedStudent ? selectedStudent.lessons.length ? <Stack spacing={1.25}>{selectedStudent.lessons.map((lesson) => <Box key={lesson.lessonId}><Stack direction="row" justifyContent="space-between" spacing={1} sx={{ mb: 0.5 }}><Typography variant="body2" sx={{ fontWeight: 600 }}>{lesson.title}</Typography><Typography variant="caption" color="text.secondary">{lesson.type === 'quiz' ? lesson.averageScore === null ? 'No quiz attempts' : `${lesson.averageScore}% · ${lesson.quizCount} attempt${lesson.quizCount === 1 ? '' : 's'}` : lesson.completed ? 'Completed' : 'Not completed'}</Typography></Stack>{lesson.type === 'quiz' && lesson.averageScore !== null ? progressBar(lesson.averageScore) : <LinearProgress variant="determinate" value={lesson.completed ? 100 : 0} color={lesson.completed ? 'success' : 'inherit'} />}</Box>)}</Stack> : <Typography color="text.secondary" variant="body2">No curriculum lessons are configured for this class.</Typography> : <Stack spacing={1.25}>{students.map((student) => <Box key={student.studentId} sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(88px, .8fr) minmax(80px, 1fr) auto', sm: 'minmax(150px, 1fr) minmax(120px, 1.4fr) auto' }, alignItems: 'center', gap: 1 }}><Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{student.studentName}</Typography>{progressBar(student.progressPercentage)}<Typography variant="caption" sx={{ minWidth: 36, textAlign: 'right' }}>{student.progressPercentage}%</Typography></Box>)}</Stack>}
+      </Paper>
+      <Paper variant="outlined" sx={{ p: { xs: 1.75, sm: 2.25 }, borderRadius: 2.5 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>Learning insights</Typography>
+        {strengths.length === 0 && needsAttention.length === 0 ? <Typography color="text.secondary" variant="body2">Quiz insights will appear after students complete assessments.</Typography> : <Stack spacing={1.5}>
+          {strengths.length > 0 && <Box><Typography variant="body2" sx={{ color: 'success.main', fontWeight: 700, mb: 0.75 }}>Top strengths</Typography><Stack spacing={0.75}>{strengths.map((lesson) => <Stack key={lesson.lessonId} direction="row" alignItems="center" spacing={1}><Typography variant="caption" noWrap sx={{ width: 100 }}>{lesson.title}</Typography>{progressBar(lesson.score)}<Typography variant="caption" sx={{ minWidth: 34, textAlign: 'right' }}>{lesson.score}%</Typography></Stack>)}</Stack></Box>}
+          {needsAttention.length > 0 && <Box><Typography variant="body2" sx={{ color: 'warning.dark', fontWeight: 700, mb: 0.75 }}>Needs attention</Typography><Stack spacing={0.75}>{needsAttention.map((lesson) => <Stack key={lesson.lessonId} direction="row" alignItems="center" spacing={1}><Typography variant="caption" noWrap sx={{ width: 100 }}>{lesson.title}</Typography>{progressBar(lesson.score)}<Typography variant="caption" sx={{ minWidth: 34, textAlign: 'right' }}>{lesson.score}%</Typography></Stack>)}</Stack></Box>}
+        </Stack>}
+      </Paper>
+    </Box>
+    <Paper variant="outlined" sx={{ p: { xs: 1.75, sm: 2.25 }, borderRadius: 2.5 }}>
+      <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>{selectedStudent ? `${selectedStudent.studentName} · activity summary` : 'Class activity'}</Typography>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2.5} divider={<Divider orientation="vertical" flexItem />}>
+        {visibleStudents.map((student) => <Stack key={student.studentId} direction="row" spacing={1} alignItems="center"><Typography variant="body2"><strong>{selectedStudent ? 'Time spent' : 'Class average time'}</strong></Typography><Chip size="small" label={minutes(selectedStudent ? student.activeSeconds : Math.round(students.reduce((total, item) => total + item.activeSeconds, 0) / students.length))} /></Stack>)}
+        <Stack direction="row" spacing={1} alignItems="center"><Typography variant="body2"><strong>Lessons completed</strong></Typography><Chip size="small" label={`${selectedStudent ? selectedStudent.lessonsCompleted : students.reduce((total, student) => total + student.lessonsCompleted, 0)}${selectedStudent ? ` / ${statistics.lessonCount}` : ' total'}`} /></Stack>
+      </Stack>
+    </Paper>
+  </Stack>
+}
+
 const ClassDetail: FC<{ classRecord: AdminClass | undefined; enrollments: ClassEnrollment[]; onBack: () => void; onEdit: () => void; onRemoveEnrollment: (enrollment: ClassEnrollment) => void; onPromote: (enrollment: ClassEnrollment) => void }> = ({ classRecord, enrollments, onBack, onEdit, onRemoveEnrollment, onPromote }) => {
   const [tab, setTab] = useState('roster')
   const [leaderboard, setLeaderboard] = useState<ClassLeaderboardEntry[]>([])
   const [leaderboardLoading, setLeaderboardLoading] = useState(false)
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null)
+  const [statistics, setStatistics] = useState<ClassStatistics | null>(null)
+  const [statisticsLoading, setStatisticsLoading] = useState(false)
+  const [statisticsError, setStatisticsError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!classRecord) return
@@ -328,6 +404,15 @@ const ClassDetail: FC<{ classRecord: AdminClass | undefined; enrollments: ClassE
       .then((entries) => { setLeaderboard(entries); setLeaderboardError(null) })
       .catch((error) => setLeaderboardError(error instanceof Error ? error.message : 'Unable to load the class leaderboard.'))
       .finally(() => setLeaderboardLoading(false))
+  }, [classRecord?.id])
+
+  useEffect(() => {
+    if (!classRecord) return
+    setStatisticsLoading(true)
+    void getClassStatistics(classRecord.id)
+      .then((result) => { setStatistics(result); setStatisticsError(null) })
+      .catch((error) => setStatisticsError(error instanceof Error ? error.message : 'Unable to load class statistics.'))
+      .finally(() => setStatisticsLoading(false))
   }, [classRecord?.id])
 
   if (!classRecord) return <Paper elevation={0} sx={{ p: 4, border: 1, borderColor: 'divider' }}><Typography variant="h6" sx={{ mb: 1 }}>Class not found</Typography><Typography color="text.secondary" sx={{ mb: 2 }}>This class is no longer available in the workspace.</Typography><Button startIcon={<ArrowBackIcon />} onClick={onBack}>Back to Active Classes</Button></Paper>
@@ -360,8 +445,9 @@ const ClassDetail: FC<{ classRecord: AdminClass | undefined; enrollments: ClassE
         <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', flex: 1 }}><Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Status</Typography><ClassStatusChip status={classRecord.status} /></Paper>
       </Stack>
       <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', mb: 3 }}>
-        <Box sx={{ px: 2, borderBottom: 1, borderColor: 'divider' }}><Tabs value={tab} onChange={(_, nextTab) => setTab(nextTab)} aria-label="Class detail tabs"><Tab value="roster" label={`Roster (${enrolled.length})`} /><Tab value="curriculum" label="Curriculum" /></Tabs></Box>
+        <Box sx={{ px: 2, borderBottom: 1, borderColor: 'divider', overflowX: 'auto' }}><Tabs value={tab} onChange={(_, nextTab) => setTab(nextTab)} aria-label="Class detail tabs"><Tab value="roster" label={`Roster (${enrolled.length})`} /><Tab value="statistics" label="Statistics" /><Tab value="curriculum" label="Curriculum" /></Tabs></Box>
         {tab === 'roster' && <Box sx={{ p: 2 }}><AdminDataTable rows={enrolled} columns={rosterColumns} searchPlaceholder="Search roster" searchKeys={['student_name']} actions={(enrollment) => <Tooltip title={`Remove ${enrollment.student_name} from the roster`}><IconButton size="small" color="error" onClick={() => onRemoveEnrollment(enrollment)} aria-label={`Remove ${enrollment.student_name}`}><DeleteOutlineIcon fontSize="small" /></IconButton></Tooltip>} /></Box>}
+        {tab === 'statistics' && <Box sx={{ p: { xs: 1.5, sm: 2.5 }}}><ClassStatisticsPanel statistics={statistics} loading={statisticsLoading} error={statisticsError} /></Box>}
         {tab === 'curriculum' && <Box sx={{ p: 2 }}><Typography variant="h6" sx={{ mb: 0.5 }}>Class curriculum</Typography><Typography color="text.secondary" variant="body2" sx={{ mb: 2 }}>Practice, lesson, quiz, and live-session content for this class.</Typography><Stack spacing={1} sx={{ mb: 3 }}>{classRecord.modules.flatMap((module) => module.lessons.map((lesson) => <Stack key={lesson.id} direction="row" justifyContent="space-between" alignItems="center" sx={{ p: 1.25, border: 1, borderColor: 'divider', borderRadius: 1 }}><Typography variant="body2">{lesson.title}</Typography><Chip size="small" label={lesson.type} variant="outlined" /></Stack>))}</Stack><Typography variant="h6" sx={{ mb: 0.5 }}>XP Leaderboard</Typography><Typography color="text.secondary" variant="body2" sx={{ mb: 1.5 }}>XP earned only from this class: lessons, passed quizzes, and live attendance.</Typography>{leaderboardLoading ? <Typography color="text.secondary">Loading leaderboard...</Typography> : leaderboardError ? <Typography color="error">{leaderboardError}</Typography> : leaderboard.length === 0 ? <Typography color="text.secondary">No enrolled students yet.</Typography> : <Stack spacing={0.75}>{leaderboard.map((entry) => <Stack key={entry.studentId} direction="row" spacing={1.25} alignItems="center" sx={{ p: 1, borderRadius: 1.5, backgroundColor: entry.rank === 1 ? 'action.hover' : 'transparent' }}><Typography color="text.secondary" sx={{ width: 24, fontWeight: 700 }}>#{entry.rank}</Typography><Avatar sx={{ width: 32, height: 32, fontSize: 13 }}>{entry.avatar}</Avatar><Typography sx={{ flex: 1, fontWeight: 600 }}>{entry.firstName}</Typography><Typography color="primary.main" sx={{ fontWeight: 700 }}>{entry.xp} XP</Typography></Stack>)}</Stack>}</Box>}
       </Paper>
       {waitlisted.length > 0 && <Paper elevation={0} sx={{ border: 1, borderColor: 'divider' }}>

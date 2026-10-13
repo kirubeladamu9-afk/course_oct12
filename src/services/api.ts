@@ -764,6 +764,36 @@ export interface ClassLeaderboardEntry {
   xp: number
 }
 
+export interface ClassStudentLessonStat {
+  lessonId: number
+  title: string
+  type: string
+  completed: boolean
+  quizCount: number
+  averageScore: number | null
+}
+
+export interface ClassStudentStat {
+  studentId: number
+  studentName: string
+  enrollmentId: number
+  lessonsCompleted: number
+  quizCount: number
+  averageQuizScore: number | null
+  activeSeconds: number
+  presentCount: number
+  attendanceCount: number
+  attendanceRate: number | null
+  progressPercentage: number
+  lessons: ClassStudentLessonStat[]
+}
+
+export interface ClassStatistics {
+  lessonCount: number
+  liveLessonCount: number
+  students: ClassStudentStat[]
+}
+
 export interface AdminClassEnrollment {
   id: number
   class_id: number
@@ -796,6 +826,12 @@ const requestClasses = async (url: string, init?: RequestInit): Promise<AdminCla
 
 export const getClassLeaderboard = async (classId: number): Promise<ClassLeaderboardEntry[]> => {
   const response = await requestApi(`/api/admin/classes/${classId}/leaderboard`)
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const getClassStatistics = async (classId: number): Promise<ClassStatistics> => {
+  const response = await requestApi(`/api/admin/classes/${classId}/statistics`)
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
 }
