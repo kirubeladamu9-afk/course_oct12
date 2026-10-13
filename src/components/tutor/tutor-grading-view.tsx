@@ -7,6 +7,7 @@ import FormControl from '@mui/material/FormControl'
 import InputAdornment from '@mui/material/InputAdornment'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
+import Pagination from '@mui/material/Pagination'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
@@ -19,6 +20,8 @@ import { getTutorQuizSubmissions, type TutorQuizSubmission } from '@/services/ap
 
 type LearnerResult = { key: string; studentName: string; studentEmail: string; lessonTitle: string; attempts: TutorQuizSubmission[]; best: TutorQuizSubmission }
 type ContentGroup = { key: string; contentType: TutorQuizSubmission['contentType']; title: string; attempts: TutorQuizSubmission[]; results: LearnerResult[] }
+
+const PAGE_SIZE = 10
 
 const formatDate = (value: string) => new Date(value).toLocaleString()
 
@@ -56,6 +59,7 @@ export const TutorGradingView = () => {
   const [groupFilter, setGroupFilter] = useState('all')
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [selectedAttemptId, setSelectedAttemptId] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
 
   const loadSubmissions = async (background = false) => {
     if (!background) setLoading(true)
@@ -102,6 +106,17 @@ export const TutorGradingView = () => {
     }))
     .filter((group) => group.visibleResults.length > 0)
 
+  const flatRows = visibleGroups.flatMap((group) => group.visibleResults.map((result) => ({ group, result })))
+  const pageCount = Math.max(1, Math.ceil(flatRows.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const pageStart = (currentPage - 1) * PAGE_SIZE
+  const pageGroups = flatRows.slice(pageStart, pageStart + PAGE_SIZE).reduce<Array<ContentGroup & { visibleResults: LearnerResult[] }>>((acc, { group, result }) => {
+    const last = acc[acc.length - 1]
+    if (last && last.key === group.key) last.visibleResults.push(result)
+    else acc.push({ ...group, visibleResults: [result] })
+    return acc
+  }, [])
+
   const toggleResult = (rowKey: string) => {
     setExpandedKey(expandedKey === rowKey ? null : rowKey)
     setSelectedAttemptId(null)
@@ -119,9 +134,9 @@ export const TutorGradingView = () => {
       <SummaryCard label="Classes" value={groups.filter((group) => group.contentType === 'class').length} />
     </Stack>
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 3 }}>
-      <TextField fullWidth value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search student, course, or quiz..." inputProps={{ 'aria-label': 'Search results' }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchOutlinedIcon color="action" /></InputAdornment> }} sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }} />
+      <TextField fullWidth value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search student, course, or quiz..." inputProps={{ 'aria-label': 'Search results' }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchOutlinedIcon color="action" /></InputAdornment> }} sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }} />
       <FormControl sx={{ minWidth: { xs: '100%', sm: 260 } }}>
-        <Select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} startAdornment={<InputAdornment position="start"><FilterListOutlinedIcon color="action" /></InputAdornment>} IconComponent={KeyboardArrowDownRoundedIcon} inputProps={{ 'aria-label': 'Course or class filter' }} sx={{ borderRadius: 2.5, height: 56 }}>
+        <Select value={groupFilter} onChange={(event) => { setGroupFilter(event.target.value); setPage(1) }} startAdornment={<InputAdornment position="start"><FilterListOutlinedIcon color="action" /></InputAdornment>} IconComponent={KeyboardArrowDownRoundedIcon} inputProps={{ 'aria-label': 'Course or class filter' }} sx={{ borderRadius: 2.5, height: 56 }}>
           <MenuItem value="all">All courses and classes</MenuItem>
           {groups.map((group) => <MenuItem key={group.key} value={group.key}>{group.contentType === 'class' ? 'Class' : 'Course'}: {group.title}</MenuItem>)}
         </Select>
@@ -131,7 +146,7 @@ export const TutorGradingView = () => {
     {loading && <Stack direction="row" spacing={1} alignItems="center"><CircularProgress size={20} aria-label="Loading results" /><Typography color="text.secondary">Loading results...</Typography></Stack>}
     {!loading && visibleGroups.length === 0 && <Typography color="text.secondary">No quiz results match these filters.</Typography>}
     <Stack spacing={2.5}>
-      {visibleGroups.map((group) => {
+      {pageGroups.map((group) => {
         const retakes = group.attempts.length - group.results.length
         return <Paper key={group.key} elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'hidden' }}>
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1.5} sx={{ p: 2.5, backgroundColor: 'background.default' }}>
@@ -187,5 +202,9 @@ export const TutorGradingView = () => {
         </Paper>
       })}
     </Stack>
+    {flatRows.length > 0 && <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems="center" spacing={1.5} sx={{ mt: 2.5 }}>
+      <Typography variant="body2" color="text.secondary">Showing {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, flatRows.length)} of {flatRows.length} results</Typography>
+      {pageCount > 1 && <Pagination count={pageCount} page={currentPage} onChange={(_, value) => setPage(value)} color="primary" shape="rounded" />}
+    </Stack>}
   </>
 }
