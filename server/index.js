@@ -1939,7 +1939,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts', requi
       ON CONFLICT (enrollment_id, lesson_id) WHERE submitted_at IS NULL
       DO UPDATE SET updated_at = NOW()
       RETURNING id::INTEGER AS id,
-                lesson_id::INTEGER AS "lessonId",
+                lesson_id::DOUBLE PRECISION AS "lessonId",
                 started_at AS "startedAt",
                 active_seconds AS "activeSeconds",
                 COALESCE(answers, '{}'::jsonb) AS answers,
@@ -1974,7 +1974,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts/:attemp
       SET violations = COALESCE(violations, '[]'::jsonb) || ${JSON.stringify([{ type: violation.type, occurredAt: violation.occurredAt }])}::jsonb,
           updated_at = NOW()
       WHERE id = ${attemptId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND submitted_at IS NULL
-      RETURNING id::INTEGER AS id, lesson_id::INTEGER AS "lessonId", started_at AS "startedAt", active_seconds AS "activeSeconds", COALESCE(answers, '{}'::jsonb) AS answers, COALESCE(violations, '[]'::jsonb) AS violations, score, passed, submitted_at AS "submittedAt"
+      RETURNING id::INTEGER AS id, lesson_id::DOUBLE PRECISION AS "lessonId", started_at AS "startedAt", active_seconds AS "activeSeconds", COALESCE(answers, '{}'::jsonb) AS answers, COALESCE(violations, '[]'::jsonb) AS violations, score, passed, submitted_at AS "submittedAt"
     `
     return attempt ? { attempt } : { error: 'Quiz attempt is no longer active.' }
   })
@@ -2005,7 +2005,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts/:attemp
           END,
           updated_at = NOW()
       WHERE id = ${attemptId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND submitted_at IS NULL
-      RETURNING id::INTEGER AS id, lesson_id::INTEGER AS "lessonId", started_at AS "startedAt", active_seconds AS "activeSeconds", COALESCE(answers, '{}'::jsonb) AS answers, score, passed, submitted_at AS "submittedAt"
+      RETURNING id::INTEGER AS id, lesson_id::DOUBLE PRECISION AS "lessonId", started_at AS "startedAt", active_seconds AS "activeSeconds", COALESCE(answers, '{}'::jsonb) AS answers, score, passed, submitted_at AS "submittedAt"
     `
     return attempt ? { attempt } : { error: 'Quiz attempt is no longer active.' }
   })
@@ -2049,7 +2049,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts/:attemp
         AND lesson_id = ${lessonId}
         AND submitted_at IS NULL
       RETURNING id::INTEGER AS id,
-                lesson_id::INTEGER AS "lessonId",
+                lesson_id::DOUBLE PRECISION AS "lessonId",
                 started_at AS "startedAt",
                 active_seconds AS "activeSeconds",
                 answers,
@@ -3142,7 +3142,7 @@ app.get('/api/admin/quiz-violations', requireAdmin, async (_request, response) =
            users.email AS "studentEmail",
            COALESCE(classes.title, courses.title, 'Class enrollment') AS "courseTitle",
            CASE WHEN enrollments.class_id IS NULL THEN courses.modules ELSE classes.modules END AS modules,
-           quiz_attempts.lesson_id::INTEGER AS "lessonId",
+           quiz_attempts.lesson_id::DOUBLE PRECISION AS "lessonId",
            quiz_attempts.violations,
            quiz_attempts.disqualified,
            quiz_attempts.score,
