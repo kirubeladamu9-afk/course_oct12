@@ -513,7 +513,7 @@ export const deleteAdminBookstoreItem = async (id: number) => {
 }
 
 export const getPublicClasses = async (): Promise<PublicClass[]> => {
-  const response = await requestApi('/api/classes')
+  const response = await fetchApi('/api/classes')
   if (!response.ok) throw new Error(await getErrorMessage(response))
   const records = await response.json() as Array<Omit<PublicClass, 'schedule'> & { schedule?: Partial<PublicClass['schedule']> | null }>
   return records.map((record) => ({
