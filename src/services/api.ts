@@ -251,7 +251,10 @@ export interface TutorClass {
   id: number
   title: string
   programId: string
-  schedule: AdminClassSchedule
+  tutorId: number
+  tutorName: string
+  gradeLevel: number | null
+  schedule: { days: string[]; time: string; duration: number; flexible: boolean; startDate: string; endDate: string }
   meetingLink: string
   price: number
   status: AdminClassStatus
@@ -542,6 +545,38 @@ export const getTutorClasses = async (): Promise<TutorClass[]> => {
   const response = await requestApi('/api/tutor/classes')
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
+}
+
+export const getTutorEditOptions = async (): Promise<Array<{ id: number; name: string }>> => {
+  const response = await requestApi('/api/tutor/edit-options')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  const result = await response.json() as { tutors: Array<{ id: number; name: string }> }
+  return result.tutors
+}
+
+export const updateTutorCourse = (course: AdminCourse): Promise<AdminCourse> => requestCourse(`/api/tutor/courses/${course.id}`, {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(course),
+})
+
+export interface TutorClassUpdate {
+  id: number
+  title: string
+  program_id: string
+  tutor_id: number
+  capacity: number
+  schedule: { startDate: string; endDate: string; days: string[]; time: string; duration: number }
+  meeting_link: string
+  modules: AdminModule[]
+  price: number
+  published: boolean
+  grade_level: number | null
+}
+
+export const updateTutorClass = async (classRecord: TutorClassUpdate): Promise<void> => {
+  const response = await requestApi(`/api/tutor/classes/${classRecord.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(classRecord) })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
 }
 
 const updateTutorCurriculum = async (url: string, modules: AdminModule[]): Promise<AdminModule[]> => {

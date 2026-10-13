@@ -39,7 +39,7 @@ import { getNextLessonId, type AdminCourse, type AdminLesson, type AdminModule, 
 import { CourseEditor } from './admin-dashboard'
 import AdminDataTable, { type DataColumn } from './admin-data-table'
 
-type ProgramId = 'international-online-interactive' | 'summer-camp' | 'ministry-exam-prep'
+export type ProgramId = 'international-online-interactive' | 'summer-camp' | 'ministry-exam-prep'
 type ClassStatus = 'pending_schedule' | 'open' | 'full' | 'closed'
 type EnrollmentStatus = 'enrolled' | 'waitlisted'
 type ClassesView = 'pending' | 'active' | 'new' | 'detail'
@@ -52,11 +52,12 @@ interface ClassSchedule {
   duration: number
 }
 
-interface AdminClass {
+export interface AdminClass {
   id: number
   program_id: ProgramId
   title: string
   tutor_id: number
+  tutor_name?: string
   capacity: number
   schedule: ClassSchedule
   meeting_link: string
@@ -84,12 +85,12 @@ interface PendingStudent {
   age: number | null
 }
 
-interface TutorOption {
+export interface TutorOption {
   id: number
   name: string
 }
 
-interface ClassFormValue {
+export interface ClassFormValue {
   title: string
   program_id: ProgramId
   tutor_id: number
@@ -265,7 +266,7 @@ const allGradeLevels = Array.from({ length: 12 }, (_, index) => index + 1)
 
 const getGradeLevelOptions = (programId: ProgramId) => programId === 'ministry-exam-prep' ? [6, 8, 12] : allGradeLevels
 
-const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boolean; onClose: () => void; onSave: (values: ClassFormValue) => void }> = ({ classRecord, open, onClose, onSave }) => {
+export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boolean; onClose: () => void; onSave: (values: ClassFormValue) => void; tutorOptions?: TutorOption[] }> = ({ classRecord, open, onClose, onSave, tutorOptions = tutors }) => {
   const [values, setValues] = useState<ClassFormValue>(emptyClassForm)
   const initializedRef = useRef(false)
 
@@ -280,8 +281,8 @@ const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boolean; onC
   }, [classRecord, open])
 
   useEffect(() => {
-    if (open && !classRecord && values.tutor_id < 1 && tutors[0]) setValues((current) => ({ ...current, tutor_id: tutors[0].id }))
-  }, [classRecord, open, values.tutor_id, tutors.length])
+    if (open && !classRecord && values.tutor_id < 1 && tutorOptions[0]) setValues((current) => ({ ...current, tutor_id: tutorOptions[0].id }))
+  }, [classRecord, open, values.tutor_id, tutorOptions.length])
 
   const allowedPastStartDate = classRecord ? normalizeSchedule(classRecord.schedule).startDate : undefined
   const classDateValidation = getDateValidation(values.schedule, allowedPastStartDate)
@@ -301,7 +302,7 @@ const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boolean; onC
           </Stack>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField required fullWidth label="Capacity" type="number" value={values.capacity} onChange={(event) => setValues({ ...values, capacity: Math.max(1, Number(event.target.value)) })} inputProps={{ min: 1 }} />
-            <FormControl fullWidth required><InputLabel>Tutor</InputLabel><Select label="Tutor" value={tutors.some((tutor) => tutor.id === values.tutor_id) ? values.tutor_id : ''} onChange={(event) => setValues({ ...values, tutor_id: Number(event.target.value) })}>{tutors.map((tutor) => <MenuItem key={tutor.id} value={tutor.id}>{tutor.name}</MenuItem>)}</Select></FormControl>
+            <FormControl fullWidth required><InputLabel>Tutor</InputLabel><Select label="Tutor" value={tutorOptions.some((tutor) => tutor.id === values.tutor_id) ? values.tutor_id : ''} onChange={(event) => setValues({ ...values, tutor_id: Number(event.target.value) })}>{tutorOptions.map((tutor) => <MenuItem key={tutor.id} value={tutor.id}>{tutor.name}</MenuItem>)}</Select></FormControl>
             <TextField required fullWidth label="Price" type="number" value={values.price} onChange={(event) => setValues({ ...values, price: Math.max(0, Number(event.target.value)) })} inputProps={{ min: 0, step: 0.01 }} />
           </Stack>
           <Box><Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Class availability</Typography><ScheduleFields schedule={values.schedule} allowedPastStartDate={allowedPastStartDate} meetingLink={values.meeting_link} onMeetingLinkChange={(meeting_link) => setValues({ ...values, meeting_link })} onChange={(schedule) => setValues({ ...values, schedule })} /></Box>

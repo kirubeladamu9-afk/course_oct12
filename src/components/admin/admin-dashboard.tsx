@@ -268,10 +268,12 @@ const lessonTypeOptions: Array<{ type: LessonType; label: string; detail: string
   { type: 'live', label: 'Live', detail: 'Schedule a session' },
 ]
 
+export const getAllowedCourseLessonTypes = (courseId: number): LessonType[] | undefined => coursesWithoutLiveLessons.includes(courseId) ? lessonTypeOptions.filter((option) => option.type !== 'live').map((option) => option.type) : undefined
+
 type ClassLessonSchedule = { startDate: string; endDate: string; days: string[]; time: string; duration: number }
 type LessonPanelState = { moduleId: number; lesson: AdminLesson; isNew: boolean; liveLessonIndex: number }
 
-export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCourse) => void; isClassLinked?: boolean; curriculumOnly?: boolean; allowedLessonTypes?: LessonType[]; classSchedule?: ClassLessonSchedule; classMeetingLink?: string }> = ({ course, onChange, isClassLinked = false, curriculumOnly = false, allowedLessonTypes, classSchedule, classMeetingLink = '' }) => {
+export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCourse) => void; isClassLinked?: boolean; curriculumOnly?: boolean; allowedLessonTypes?: LessonType[]; classSchedule?: ClassLessonSchedule; classMeetingLink?: string; tutorOptions?: string[] }> = ({ course, onChange, isClassLinked = false, curriculumOnly = false, allowedLessonTypes, classSchedule, classMeetingLink = '', tutorOptions = ['Maya Chen', 'Leon Kennedy', 'Jhon Dwirian', 'Rizki Known'] }) => {
   const [draggedModule, setDraggedModule] = useState<number | null>(null)
   const [draggedLesson, setDraggedLesson] = useState<{ moduleId: number; index: number } | null>(null)
   const [expandedModuleIds, setExpandedModuleIds] = useState<number[]>([])
@@ -525,7 +527,7 @@ export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCou
         </Stack>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
           <FormControl fullWidth><InputLabel>Level</InputLabel><Select label="Level" value={course.level} onChange={(event) => onChange({ ...course, level: event.target.value })}><MenuItem value="Beginner">Beginner</MenuItem><MenuItem value="Intermediate">Intermediate</MenuItem><MenuItem value="Advanced">Advanced</MenuItem></Select></FormControl>
-          <FormControl fullWidth><InputLabel>Tutor</InputLabel><Select label="Tutor" value={course.tutor} onChange={(event) => onChange({ ...course, tutor: event.target.value })}>{['Maya Chen', 'Leon Kennedy', 'Jhon Dwirian', 'Rizki Known'].map((tutor) => <MenuItem key={tutor} value={tutor}>{tutor}</MenuItem>)}</Select></FormControl>
+          <FormControl fullWidth><InputLabel>Tutor</InputLabel><Select label="Tutor" value={course.tutor} onChange={(event) => onChange({ ...course, tutor: event.target.value })}>{tutorOptions.map((tutor) => <MenuItem key={tutor} value={tutor}>{tutor}</MenuItem>)}</Select></FormControl>
           <TextField fullWidth label="Price" type="number" inputProps={{ min: 0, step: 1 }} value={course.price} onChange={(event) => onChange({ ...course, price: Number(event.target.value) })} />
         </Stack>
         <TextField fullWidth multiline minRows={2} label="Description" value={course.description} onChange={(event) => onChange({ ...course, description: event.target.value })} />
@@ -944,7 +946,7 @@ const CourseEditorPage: FC<CourseEditorPageProps> = ({ mode, courseId }) => {
         description={mode === 'new' ? 'Create a course and build its learning path.' : `Update ${course.title} and its learning path.`}
         action={<Stack direction="row" spacing={1}><Button label="Back to courses" variant="text" onClick={() => navigateTo('/admin/courses')} /><Button label={mode === 'new' ? 'Create course' : 'Save changes'} onClick={() => void saveCourse()} disabled={isSaving} /></Stack>}
       />
-      <CourseEditor course={course} onChange={setCourse} isClassLinked={isClassLinked} allowedLessonTypes={coursesWithoutLiveLessons.includes(course.id) ? lessonTypeOptions.filter((option) => option.type !== 'live').map((option) => option.type) : undefined} />
+      <CourseEditor course={course} onChange={setCourse} isClassLinked={isClassLinked} allowedLessonTypes={getAllowedCourseLessonTypes(course.id)} />
     </>
   )
 }

@@ -8,6 +8,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
 import Drawer from '@mui/material/Drawer'
 import FormControl from '@mui/material/FormControl'
+import InputAdornment from '@mui/material/InputAdornment'
 import IconButton from '@mui/material/IconButton'
 import Menu from '@mui/material/Menu'
 import Tooltip from '@mui/material/Tooltip'
@@ -21,18 +22,25 @@ import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { alpha, useTheme } from '@mui/material/styles'
 import CalendarTodayOutlinedIcon from '@mui/icons-material/CalendarTodayOutlined'
+import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined'
 import ClassOutlinedIcon from '@mui/icons-material/ClassOutlined'
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined'
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined'
+import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
+import FilterListOutlinedIcon from '@mui/icons-material/FilterListOutlined'
+import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded'
+import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined'
 import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined'
 import MenuIcon from '@mui/icons-material/Menu'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
 import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
 import { type FC, useEffect, useMemo, useRef, useState } from 'react'
-import { CourseEditor } from '@/components/admin/admin-dashboard'
+import { CourseEditor, getAllowedCourseLessonTypes } from '@/components/admin/admin-dashboard'
+import { ClassEditorDialog, type AdminClass as AdminClassEditorRecord, type ClassFormValue, type ProgramId, type TutorOption } from '@/components/admin/classes-workspace'
 import ScheduleCalendar, { type ScheduleSession } from '@/components/schedule-calendar'
-import { getAuthenticatedUser, getClassLeaderboard, getTutorAtRiskStudents, getTutorClasses, getTutorClassStudents, getTutorCourses, getTutorCourseStudents, getTutorOverview, saveAuthenticatedUser, updateTutorClassAttendance, updateTutorClassCurriculum, updateTutorCourseCurriculum, updateTutorProfile, type AtRiskStudent, type TutorClass, type TutorClassStudent, type TutorOverview } from '@/services/api'
+import { getAuthenticatedUser, getClassLeaderboard, getTutorAtRiskStudents, getTutorClasses, getTutorClassStudents, getTutorCourses, getTutorCourseStudents, getTutorEditOptions, getTutorOverview, saveAuthenticatedUser, updateTutorClass, updateTutorClassAttendance, updateTutorCourse, updateTutorProfile, type AtRiskStudent, type TutorClass, type TutorClassStudent, type TutorOverview } from '@/services/api'
 import AtRiskStudentsPanel from '@/components/at-risk-students-panel'
 import { type AdminCourse, type AdminModule } from '@/components/admin/admin-data'
 import { navigateTo } from '@/lib/navigation'
@@ -51,6 +59,11 @@ const statItems = (overview: TutorOverview) => [
   { label: 'Active students', value: overview.totalStudents, icon: <GroupsOutlinedIcon color="primary" /> },
   { label: 'Upcoming classes', value: overview.upcomingClasses, icon: <DashboardOutlinedIcon color="primary" /> },
 ]
+
+const TutorListControls: FC<{ search: string; onSearch: (value: string) => void; searchPlaceholder: string; filter: string; onFilter: (value: string) => void; filterLabel: string; filters: Array<{ value: string; label: string }> }> = ({ search, onSearch, searchPlaceholder, filter, onFilter, filterLabel, filters }) => <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 3.5 }}>
+  <TextField fullWidth value={search} onChange={(event) => onSearch(event.target.value)} placeholder={searchPlaceholder} inputProps={{ 'aria-label': searchPlaceholder }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchOutlinedIcon color="action" /></InputAdornment> }} sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }} />
+  <FormControl sx={{ minWidth: { xs: '100%', sm: 190 } }}><Select value={filter} onChange={(event) => onFilter(event.target.value)} startAdornment={<InputAdornment position="start"><FilterListOutlinedIcon color="action" /></InputAdornment>} IconComponent={KeyboardArrowDownRoundedIcon} inputProps={{ 'aria-label': filterLabel }} sx={{ borderRadius: 2.5, height: 56 }}>{filters.map((option) => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}</Select></FormControl>
+</Stack>
 
 interface StudentsAttendanceViewProps {
   selectedClass: TutorClass
@@ -167,6 +180,10 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
   const [mobileOpen, setMobileOpen] = useState(false)
   const [profileAnchor, setProfileAnchor] = useState<null | HTMLElement>(null)
   const [view, setView] = useState<View>('overview')
+  const [courseSearch, setCourseSearch] = useState('')
+  const [courseFilter, setCourseFilter] = useState('all')
+  const [classSearch, setClassSearch] = useState('')
+  const [classFilter, setClassFilter] = useState('all')
   const [overview, setOverview] = useState<TutorOverview | null>(null)
   const [courses, setCourses] = useState<Awaited<ReturnType<typeof getTutorCourses>>>([])
   const [classes, setClasses] = useState<TutorClass[]>([])
@@ -187,7 +204,8 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
   const hasLoaded = useRef(false)
   const [now, setNow] = useState(() => new Date())
   const [courseDraft, setCourseDraft] = useState<AdminCourse | null>(null)
-  const [classDraft, setClassDraft] = useState<{ record: TutorClass; course: AdminCourse } | null>(null)
+  const [classDraft, setClassDraft] = useState<AdminClassEditorRecord | null>(null)
+  const [tutorOptions, setTutorOptions] = useState<TutorOption[]>([])
   const user = getAuthenticatedUser()
 
   const refreshAtRisk = async () => {
@@ -206,10 +224,11 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
     setLoading(true)
     setError('')
     try {
-      const [nextOverview, nextCourses, nextClasses] = await Promise.all([getTutorOverview(), getTutorCourses(), getTutorClasses(), refreshAtRisk()])
+      const [nextOverview, nextCourses, nextClasses, nextTutorOptions] = await Promise.all([getTutorOverview(), getTutorCourses(), getTutorClasses(), getTutorEditOptions(), refreshAtRisk()])
       setOverview(nextOverview)
       setCourses(nextCourses)
       setClasses(nextClasses)
+      setTutorOptions(nextTutorOptions)
       setProfile({ name: nextOverview.tutor.name, phone: nextOverview.tutor.phone, bio: nextOverview.tutor.bio })
       if (nextClasses[0]) setSelectedClassId(nextClasses[0].id)
     } catch (loadError) {
@@ -236,7 +255,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
   }, [])
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
-  }, [view, selectedClassId, progressTarget?.type, progressTarget?.id, courseDraft?.id, classDraft?.record.id])
+  }, [view, selectedClassId, progressTarget?.type, progressTarget?.id, courseDraft?.id, classDraft?.id])
   useEffect(() => {
     const classId = progressTarget?.type === 'class' ? progressTarget.id : null
     if (classId === null) {
@@ -277,8 +296,10 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
   }, [view, selectedClassId, progressTarget])
 
   const selectedClass = classes.find((classRecord) => classRecord.id === selectedClassId)
+  const visibleCourses = courses.filter((course) => `${course.title} ${course.category}`.toLowerCase().includes(courseSearch.trim().toLowerCase()) && (courseFilter === 'all' || course.status.toLowerCase() === courseFilter))
+  const visibleClasses = classes.filter((classRecord) => `${classRecord.title} ${classRecord.programId} ${classRecord.courseTitle ?? ''}`.toLowerCase().includes(classSearch.trim().toLowerCase()) && (classFilter === 'all' || (classFilter === 'published' ? classRecord.published : !classRecord.published)))
   const liveLessons = useMemo(() => selectedClass?.modules.flatMap((module) => module.lessons).filter((lesson) => lesson.type === 'live') ?? [], [selectedClass])
-  const pageTitle = courseDraft ? 'Edit Course Curriculum' : classDraft ? 'Edit Class Curriculum' : progressTarget ? 'Student Progress' : view === 'overview' ? 'Overview' : view === 'schedule' ? 'Schedule' : view === 'courses' ? 'My Courses' : view === 'classes' ? 'My Classes' : view === 'students' ? 'Students & Attendance' : 'Profile'
+  const pageTitle = courseDraft ? 'Edit Course' : classDraft ? 'Edit Class' : progressTarget ? 'Student Progress' : view === 'overview' ? 'Overview' : view === 'schedule' ? 'Schedule' : view === 'courses' ? 'My Courses' : view === 'classes' ? 'My Classes' : view === 'students' ? 'Students & Attendance' : 'Profile'
 
   useEffect(() => {
     document.title = `${SITE_NAME} | ${pageTitle}`
@@ -309,31 +330,31 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
     if (!courseDraft) return
     setSaving(true)
     try {
-      const modules = await updateTutorCourseCurriculum(courseDraft.id, courseDraft.modules)
-      setCourses((current) => current.map((course) => course.id === courseDraft.id ? { ...course, modules } : course))
+      const savedCourse = await updateTutorCourse(courseDraft)
+      setCourses(await getTutorCourses())
       setCourseDraft(null)
-      toast.add({ type: 'success', title: 'Course curriculum saved', description: 'The course curriculum was updated.' })
+      toast.add({ type: 'success', title: 'Course saved', description: `${savedCourse.title} was updated.` })
     } catch (saveError) {
-      const message = saveError instanceof Error ? saveError.message : 'Unable to save course curriculum.'
+      const message = saveError instanceof Error ? saveError.message : 'Unable to save course.'
       setError(message)
       toast.add({ type: 'error', title: 'Course update failed', description: message })
     } finally { setSaving(false) }
   }
 
   const manageClass = (classRecord: TutorClass) => {
-    setClassDraft({ record: classRecord, course: { id: classRecord.id, title: classRecord.title, category: 'Class', level: '', tutor: overview?.tutor.name ?? '', status: 'Draft', students: classRecord.enrolledCount, price: 0, cover: '', description: '', longDescription: '', learningOutcomes: [], requirements: [], certificate: false, updatedAt: '', modules: classRecord.modules } })
+    setClassDraft({ id: classRecord.id, program_id: classRecord.programId as ProgramId, title: classRecord.title, tutor_id: classRecord.tutorId, tutor_name: classRecord.tutorName, capacity: classRecord.capacity, schedule: { startDate: classRecord.schedule.startDate, endDate: classRecord.schedule.endDate, days: classRecord.schedule.days, time: classRecord.schedule.time, duration: classRecord.schedule.duration }, meeting_link: classRecord.meetingLink, modules: classRecord.modules, price: classRecord.price, status: classRecord.status, published: classRecord.published, grade_level: classRecord.gradeLevel })
   }
 
-  const saveClassDraft = async () => {
+  const saveClassDraft = async (values: ClassFormValue) => {
     if (!classDraft) return
     setSaving(true)
     try {
-      const modules = await updateTutorClassCurriculum(classDraft.record.id, classDraft.course.modules)
-      setClasses((current) => current.map((classRecord) => classRecord.id === classDraft.record.id ? { ...classRecord, modules } : classRecord))
+      await updateTutorClass({ id: classDraft.id, ...values })
+      setClasses(await getTutorClasses())
       setClassDraft(null)
-      toast.add({ type: 'success', title: 'Class curriculum saved', description: 'The class curriculum was updated.' })
+      toast.add({ type: 'success', title: 'Class saved', description: `${values.title} was updated.` })
     } catch (saveError) {
-      const message = saveError instanceof Error ? saveError.message : 'Unable to save class curriculum.'
+      const message = saveError instanceof Error ? saveError.message : 'Unable to save class.'
       setError(message)
       toast.add({ type: 'error', title: 'Class update failed', description: message })
     } finally { setSaving(false) }
@@ -422,8 +443,8 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
         </Stack>
       </Box>
       <Box component="main" sx={{ flex: 1, maxWidth: 1440, mx: 'auto', width: '100%', p: { xs: 2, sm: 2.5, md: 4 } }}>
-      {courseDraft && <Paper elevation={0} sx={{ mb: 3, p: 2.5, border: 1, borderColor: 'primary.main' }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}><Typography variant="h5">Edit course curriculum</Typography><Stack direction="row" spacing={1}><Button onClick={() => setCourseDraft(null)}>Cancel</Button><Button variant="contained" onClick={() => void saveCourseDraft()} disabled={saving}>Save curriculum</Button></Stack></Stack><CourseEditor curriculumOnly allowedLessonTypes={['video', 'article', 'quiz']} course={courseDraft} onChange={setCourseDraft} /></Paper>}
-      {classDraft && <Paper elevation={0} sx={{ mb: 3, p: 2.5, border: 1, borderColor: 'primary.main' }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}><Typography variant="h5">Edit class curriculum</Typography><Stack direction="row" spacing={1}><Button onClick={() => setClassDraft(null)}>Cancel</Button><Button variant="contained" onClick={() => void saveClassDraft()} disabled={saving}>Save curriculum</Button></Stack></Stack><CourseEditor curriculumOnly course={classDraft.course} onChange={(course) => setClassDraft((current) => current ? { ...current, course } : current)} /></Paper>}
+      {courseDraft && <><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 2 }}><Box><Button onClick={() => setCourseDraft(null)} sx={{ mb: 1 }}>Back to My Courses</Button><Typography variant="h4">Edit course</Typography><Typography color="text.secondary">Update course details, publishing, requirements, and curriculum.</Typography></Box><Button variant="contained" onClick={() => void saveCourseDraft()} disabled={saving}>Save changes</Button></Stack><CourseEditor course={courseDraft} onChange={setCourseDraft} allowedLessonTypes={getAllowedCourseLessonTypes(courseDraft.id)} tutorOptions={Array.from(new Set([...tutorOptions.map((tutor) => tutor.name), courseDraft.tutor]))} /></>}
+      <ClassEditorDialog classRecord={classDraft} open={Boolean(classDraft)} onClose={() => setClassDraft(null)} onSave={(values) => void saveClassDraft(values)} tutorOptions={classDraft && !tutorOptions.some((tutor) => tutor.id === classDraft.tutor_id) ? [...tutorOptions, { id: classDraft.tutor_id, name: classDraft.tutor_name ?? overview?.tutor.name ?? 'Current tutor' }] : tutorOptions} />
       {error && view !== 'profile' && <Paper sx={{ p: 2, mb: 2, border: 1, borderColor: 'error.main' }}><Typography color="error">{error}</Typography></Paper>}
       {profileError && view === 'profile' && <Paper sx={{ p: 2, mb: 2, border: 1, borderColor: 'error.main' }}><Typography color="error">{profileError}</Typography></Paper>}
       {view === 'overview' && overview && <>
@@ -443,8 +464,8 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
         <Paper elevation={0} sx={{ mt: 2.25, p: { xs: 2.25, sm: 3 }, borderRadius: 3.5, border: 1, borderColor: 'divider' }}><Typography variant="h6" sx={{ mb: 1, fontWeight: 800 }}>Your teaching assignments</Typography><Typography color="text.secondary">Manage class rosters, attendance, and your profile from the sections above.</Typography><Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 2 }}><Chip icon={<SchoolOutlinedIcon />} label={`${overview.totalCourses} courses`} variant="outlined" /><Chip icon={<ClassOutlinedIcon />} label={`${overview.totalClasses} classes`} variant="outlined" /><Chip icon={<GroupsOutlinedIcon />} label={`${overview.totalStudents} students`} variant="outlined" /></Stack></Paper>
       </>}
       {view === 'schedule' && <TutorScheduleView classes={classes} now={now} />}
-      {view === 'courses' && !progressTarget && <><Box sx={{ mb: 3 }}><Typography variant="h4">My courses</Typography><Typography color="text.secondary">Curriculum and student progress for your assigned courses</Typography></Box><Stack spacing={2}>{courses.length ? courses.map((course) => <Paper key={course.id} elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider' }}><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={2}><Box><Typography variant="h6">{course.title}</Typography><Typography color="text.secondary">{course.category} · {course.students} students</Typography></Box><Stack direction="row" spacing={1}><Button size="small" variant="outlined" onClick={() => setProgressTarget({ type: 'course', id: course.id, title: course.title, modules: course.modules })}>Student Progress</Button><Button size="small" variant="outlined" onClick={() => manageCourse(course)}>Edit curriculum</Button></Stack></Stack></Paper>) : <Typography color="text.secondary">No courses assigned yet.</Typography>}</Stack></>}
-      {view === 'classes' && !progressTarget && <><Box sx={{ mb: 3 }}><Typography variant="h4">My classes</Typography><Typography color="text.secondary">Rosters, attendance, curriculum, and student progress for your assigned classes</Typography></Box><Stack spacing={2}>{classes.length ? classes.map((classRecord) => <Paper key={classRecord.id} elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider' }}><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={2}><Box><Typography variant="h6">{classRecord.title}</Typography><Typography color="text.secondary">{classRecord.enrolledCount} enrolled students · {classRecord.status}</Typography><Typography color="text.secondary" variant="body2">{classRecord.schedule.startDate || 'Start date pending'} – {classRecord.schedule.endDate || 'End date pending'}</Typography></Box><Stack direction="row" spacing={1}><Button size="small" variant="outlined" onClick={() => { setProgressTarget({ type: 'class', id: classRecord.id, title: classRecord.title, modules: classRecord.modules }); setView('classes') }}>Student Progress</Button><Button size="small" variant="outlined" onClick={() => { setSelectedClassId(classRecord.id); setProgressTarget(null); setView('students') }}>Students & attendance</Button><Button size="small" variant="outlined" onClick={() => manageClass(classRecord)}>Edit curriculum</Button></Stack></Stack></Paper>) : <Typography color="text.secondary">No classes assigned yet.</Typography>}</Stack></>}
+      {view === 'courses' && !progressTarget && <><Box sx={{ mb: 2.5 }}><Typography variant="h4" sx={{ mb: 0.75 }}>My courses</Typography><Typography color="text.secondary">Curriculum and student progress for your assigned courses</Typography></Box><TutorListControls search={courseSearch} onSearch={setCourseSearch} searchPlaceholder="Search courses..." filter={courseFilter} onFilter={setCourseFilter} filterLabel="Course filter" filters={[{ value: 'all', label: 'All Courses' }, { value: 'published', label: 'Published' }, { value: 'draft', label: 'Draft' }]} /><Stack spacing={2.5}>{visibleCourses.length ? visibleCourses.map((course) => <Card key={course.id} elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, transition: 'border-color .18s, box-shadow .18s', '&:hover': { borderColor: 'primary.main', boxShadow: 2 } }}><CardContent sx={{ p: { xs: 2, md: 2.5 }, '&:last-child': { pb: { xs: 2, md: 2.5 } } }}><Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={2.25}><Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1 }}><Box component="img" src={course.cover} alt={`${course.title} thumbnail`} sx={{ width: 96, height: 76, flexShrink: 0, objectFit: 'cover', borderRadius: 2 }} /><Box sx={{ minWidth: 0 }}><Typography sx={{ fontSize: '1.3rem', fontWeight: 700, lineHeight: 1.3, mb: 0.75 }}>{course.title}</Typography><Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center" spacing={0.5}><SchoolOutlinedIcon fontSize="small" /><Typography variant="body2">{course.category}</Typography></Stack><Typography variant="body2">·</Typography><Stack direction="row" alignItems="center" spacing={0.5}><GroupsOutlinedIcon fontSize="small" /><Typography variant="body2">{course.students} students</Typography></Stack></Stack></Box></Box><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ flexShrink: 0, '& .MuiButton-root': { px: 1.75, py: 1 } }}><Button size="small" variant="outlined" startIcon={<AssessmentOutlinedIcon />} onClick={() => setProgressTarget({ type: 'course', id: course.id, title: course.title, modules: course.modules })}>Student Progress</Button><Button size="small" variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => manageCourse(course)}>Edit curriculum</Button></Stack></Stack></CardContent></Card>) : <Typography color="text.secondary">No courses assigned yet.</Typography>}</Stack></>}
+      {view === 'classes' && !progressTarget && <><Box sx={{ mb: 2.5 }}><Typography variant="h4" sx={{ mb: 0.75 }}>My classes</Typography><Typography color="text.secondary">Rosters, attendance, curriculum, and student progress for your assigned classes</Typography></Box><TutorListControls search={classSearch} onSearch={setClassSearch} searchPlaceholder="Search classes..." filter={classFilter} onFilter={setClassFilter} filterLabel="Class filter" filters={[{ value: 'all', label: 'All Classes' }, { value: 'published', label: 'Published' }, { value: 'unpublished', label: 'Unpublished' }]} /><Stack spacing={2.5}>{visibleClasses.length ? visibleClasses.map((classRecord) => <Card key={classRecord.id} elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, transition: 'border-color .18s, box-shadow .18s', '&:hover': { borderColor: 'primary.main', boxShadow: 2 } }}><CardContent sx={{ p: { xs: 2, md: 2.5 }, '&:last-child': { pb: { xs: 2, md: 2.5 } } }}><Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={2.25}><Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontSize: '1.3rem', fontWeight: 700, lineHeight: 1.3, mb: 0.75 }}>{classRecord.title}</Typography><Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center" spacing={0.5}><GroupsOutlinedIcon fontSize="small" /><Typography variant="body2">{classRecord.enrolledCount} enrolled students</Typography></Stack><Typography variant="body2">·</Typography><Typography variant="body2">{classRecord.status}</Typography><Typography variant="body2">·</Typography><Stack direction="row" alignItems="center" spacing={0.5}><CalendarMonthOutlinedIcon fontSize="small" /><Typography variant="body2">{classRecord.schedule.startDate || 'Start date pending'} – {classRecord.schedule.endDate || 'End date pending'}</Typography></Stack></Stack></Box><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ flexShrink: 0, '& .MuiButton-root': { px: 1.5, py: 1 } }}><Button size="small" variant="outlined" startIcon={<AssessmentOutlinedIcon />} onClick={() => { setProgressTarget({ type: 'class', id: classRecord.id, title: classRecord.title, modules: classRecord.modules }); setView('classes') }}>Student Progress</Button><Button size="small" variant="outlined" startIcon={<GroupsOutlinedIcon />} onClick={() => { setSelectedClassId(classRecord.id); setProgressTarget(null); setView('students') }}>Students & attendance</Button><Button size="small" variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => manageClass(classRecord)}>Edit curriculum</Button></Stack></Stack></CardContent></Card>) : <Typography color="text.secondary">No classes assigned yet.</Typography>}</Stack></>}
       {progressTarget && <StudentProgressView target={progressTarget} students={students} studentsLoading={studentsLoading} classRanks={classRanks} onBack={() => setProgressTarget(null)} />}
       {view === 'students' && selectedClass && !progressTarget && <StudentsAttendanceView selectedClass={selectedClass} students={students} liveLessons={liveLessons} onMarkAttendance={markAttendance} studentsLoading={studentsLoading} onBack={() => setView('classes')} />}
       {view === 'students' && !selectedClass && <><Typography variant="h4" sx={{ mb: 3 }}>Students & attendance</Typography><FormControl sx={{ minWidth: { xs: '100%', sm: 360 }, mb: 2 }}><InputLabel>Class</InputLabel><Select label="Class" value={selectedClassId} onChange={(event) => setSelectedClassId(event.target.value as number)}>{classes.map((classRecord) => <MenuItem key={classRecord.id} value={classRecord.id}>{classRecord.title}</MenuItem>)}</Select></FormControl>{selectedClass && <Paper elevation={0} sx={{ p: 2, mb: 2, border: 1, borderColor: 'divider' }}><Typography variant="subtitle2">Join-click reference</Typography><Typography variant="caption" color="text.secondary">A Join Class click is a reference only; select Present or Absent to record attendance.</Typography><Stack spacing={0.5} sx={{ mt: 1 }}>{students.flatMap((student) => liveLessons.filter((lesson) => student.sessionJoinClicks[lesson.id]).map((lesson) => <Typography key={`${student.id}-${lesson.id}`} variant="caption">{student.studentName} · {lesson.title}: {new Date(student.sessionJoinClicks[lesson.id]).toLocaleString()}</Typography>))}</Stack></Paper>}{selectedClass && <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'auto' }}><Box sx={{ minWidth: 700 }}><Stack direction="row" sx={{ p: 2, backgroundColor: 'background.default', fontWeight: 700 }}><Typography sx={{ flex: 1 }}>Student</Typography>{liveLessons.map((lesson) => <Typography key={lesson.id} sx={{ width: 150 }}>{lesson.title}</Typography>)}</Stack><Divider />{students.length ? students.map((student) => <Stack key={student.id} direction="row" alignItems="center" sx={{ p: 2 }}><Box sx={{ flex: 1 }}><Typography>{student.studentName}</Typography><Typography variant="caption" color="text.secondary">{student.studentEmail}</Typography></Box>{liveLessons.map((lesson) => <FormControl key={lesson.id} size="small" sx={{ width: 140 }}><Select value={student.attendance[lesson.id] ?? ''} displayEmpty inputProps={{ 'aria-label': `${student.studentName} attendance for ${lesson.title}` }} onChange={(event) => void markAttendance(student, lesson.id, event.target.value as 'Present' | 'Absent')}><MenuItem value="">Not marked</MenuItem><MenuItem value="Present">Present</MenuItem><MenuItem value="Absent">Absent</MenuItem></Select></FormControl>)}</Stack>) : <Typography color="text.secondary" sx={{ p: 3 }}>No students enrolled in this class.</Typography>}</Box></Paper>}</>}

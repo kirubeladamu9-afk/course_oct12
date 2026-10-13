@@ -2553,11 +2553,19 @@ app.get('/api/tutor/courses', requireTutor, async (request, response) => {
   return response.json(courses.map(deserializeCourse))
 })
 
+app.get('/api/tutor/edit-options', requireTutor, async (_request, response) => {
+  const tutors = await sql`SELECT id::INTEGER AS id, name FROM tutors WHERE status = 'Active' ORDER BY name`
+  return response.json({ tutors })
+})
+
 app.get('/api/tutor/classes', requireTutor, async (request, response) => {
   const classes = await sql`
     SELECT classes.id::INTEGER AS id,
            classes.title,
            classes.program_id AS "programId",
+           classes.tutor_id::INTEGER AS "tutorId",
+           tutors.name AS "tutorName",
+           classes.grade_level AS "gradeLevel",
            classes.schedule,
            classes.meeting_link AS "meetingLink",
            classes.price::FLOAT AS price,
@@ -2570,6 +2578,7 @@ app.get('/api/tutor/classes', requireTutor, async (request, response) => {
            classes.modules
     FROM classes
     LEFT JOIN courses ON courses.id = classes.course_id
+    LEFT JOIN tutors ON tutors.id = classes.tutor_id
     LEFT JOIN (
       SELECT class_id, COUNT(*) FILTER (WHERE class_status = 'enrolled') AS enrolled_count
       FROM enrollments
@@ -2577,7 +2586,6 @@ app.get('/api/tutor/classes', requireTutor, async (request, response) => {
       GROUP BY class_id
     ) AS enrollment_counts ON enrollment_counts.class_id = classes.id
     WHERE classes.tutor_id = ${request.tutorId}
-      AND classes.published = true
     ORDER BY classes.created_at DESC, classes.id DESC
   `
   return response.json(classes.map((classRecord) => ({
@@ -2585,6 +2593,55 @@ app.get('/api/tutor/classes', requireTutor, async (request, response) => {
     schedule: deserializeJson(classRecord.schedule),
     modules: deserializeJson(classRecord.modules) ?? [],
   })))
+})
+
+app.put('/api/tutor/courses/:id', requireTutor, async (request, response) => {
+  const id = parseCourseId(request.params.id)
+  if (id === null) return response.status(400).json({ message: 'Invalid course id.' })
+  const course = parseCoursePayload(request.body)
+  if (!course) return response.status(400).json({ message: 'Enter all required course details.' })
+  try {
+    const tutorId = await findTutorIdByName(course.tutor)
+    if (!tutorId) return response.status(400).json({ message: 'Select an active tutor before saving the course.' })
+    const courseWithTutor = { ...course, tutor_id: tutorId }
+    const updated = await sql.begin(async (transaction) => {
+      const [current] = await transaction`SELECT modules FROM courses WHERE id = ${id} AND tutor_id = ${request.tutorId} FOR UPDATE`
+      if (!current) return null
+      const previousModules = deserializeJson(current.modules)
+      const nextModules = deserializeJson(courseWithTutor.modules)
+      const addedIds = getChangedCourseLessonIds(previousModules, nextModules)
+      const staleProgress = addedIds.length ? await transaction`
+        SELECT DISTINCT progress.lesson_id::TEXT AS "lessonId"
+        FROM student_lesson_progress progress
+        INNER JOIN enrollments ON enrollments.id = progress.enrollment_id
+        WHERE enrollments.course_id = ${id}
+          AND enrollments.class_id IS NULL
+          AND progress.lesson_id::TEXT = ANY(${addedIds})
+      ` : []
+      const modules = remapReusedCourseLessonIds(previousModules, nextModules, staleProgress.map(({ lessonId }) => lessonId))
+      const [saved] = await transaction`
+        UPDATE courses
+        SET ${transaction({ ...courseWithTutor, modules: JSON.stringify(modules) })}, updated_at = NOW()
+        WHERE id = ${id} AND tutor_id = ${request.tutorId}
+        RETURNING id
+      `
+      return saved ?? null
+    })
+    if (!updated) return response.status(404).json({ message: 'Course not found.' })
+    return response.json(await readCourse(id))
+  } catch (error) {
+    if (error.code === '23505') return response.status(409).json({ message: 'A course with this title already exists.' })
+    throw error
+  }
+})
+
+app.put('/api/tutor/classes/:id', requireTutor, async (request, response) => {
+  const id = parseCourseId(request.params.id)
+  const classPayload = parseClassPayload(request.body)
+  if (id === null || !classPayload) return response.status(400).json({ message: 'Enter valid class details.' })
+  const [updated] = await sql`UPDATE classes SET ${sql(classPayload)}, updated_at = NOW() WHERE id = ${id} AND tutor_id = ${request.tutorId} RETURNING id`
+  if (!updated) return response.status(404).json({ message: 'Class not found.' })
+  return response.json(await refreshClassStatus(id))
 })
 
 app.put('/api/tutor/courses/:id/curriculum', requireTutor, async (request, response) => {
