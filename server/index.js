@@ -2913,7 +2913,7 @@ app.get('/api/tutor/grading/submissions', requireTutor, async (request, response
     LEFT JOIN courses ON courses.id = enrollments.course_id
     LEFT JOIN classes ON classes.id = enrollments.class_id
     WHERE attempts.submitted_at IS NOT NULL
-      AND (courses.tutor_id = ${request.tutorId} OR (classes.tutor_id = ${request.tutorId} AND classes.published = true))
+      AND ((classes.id IS NULL AND courses.tutor_id = ${request.tutorId}) OR (classes.id IS NOT NULL AND classes.tutor_id = ${request.tutorId} AND classes.published = true))
     ORDER BY attempts.submitted_at DESC, attempts.id DESC
   `
   return response.json(rows.map((row) => {
