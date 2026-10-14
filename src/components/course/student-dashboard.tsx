@@ -670,7 +670,7 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
 }
 
 const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; now: Date; onOpenCourse: (courseId: number) => void; gamificationData: GamificationData | null }> = ({ enrollments, completedLessons, now, onOpenCourse, gamificationData }) => {
-  const classEnrollments = enrollments.filter((enrollment) => enrollment.type === 'class' && enrollment.classRecord)
+  const classEnrollments = enrollments.filter((enrollment, index) => enrollment.type === 'class' && enrollment.classRecord && enrollments.findIndex((other) => other.type === 'class' && other.classRecord?.id === enrollment.classRecord?.id) === index)
   return <>
     <ViewHeading title="My Classes" description="Continue your class curriculum and keep up with live learning sessions." />
     {classEnrollments.length === 0 ? <EmptyState title="No classes yet" description="Paid class enrollments will appear here once they are assigned." actionLabel="Explore courses" onAction={() => navigateTo('/')} /> : <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>{classEnrollments.map((enrollment) => {
