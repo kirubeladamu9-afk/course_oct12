@@ -1601,7 +1601,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
         </>}
       </Box>
     </Box>
-    {classCheckoutCourse && classToEnroll && <EnrollmentModal course={classCheckoutCourse} classId={classToEnroll.id} open={true} onClose={() => setClassToEnroll(null)} />}
+    {classCheckoutCourse && classToEnroll && <EnrollmentModal course={classCheckoutCourse} classId={classToEnroll.id} open={true} onClose={() => setClassToEnroll(null)} onPaid={() => { void getMyEnrollments().then((records) => setEnrollments(mapMyEnrollments(records, currentUserId))).catch(() => undefined) }} />}
     {victoryCelebrationId > 0 && <QuizVictoryCelebration key={victoryCelebrationId} />}
   </Box>
 }

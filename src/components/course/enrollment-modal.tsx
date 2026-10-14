@@ -27,11 +27,12 @@ interface EnrollmentModalProps {
   open: boolean
   paymentReference?: string | null
   onClose: () => void
+  onPaid?: () => void
 }
 
 const steps = ['Account', 'Payment']
 
-const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, practiceExamId, open, paymentReference, onClose }) => {
+const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, practiceExamId, open, paymentReference, onClose, onPaid }) => {
   const [activeStep, setActiveStep] = useState(0)
   const [accountError, setAccountError] = useState<string | null>(null)
   const [isSubmittingAccount, setIsSubmittingAccount] = useState(false)
@@ -61,6 +62,7 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, pra
         if (!isCurrent) return
         if (payment.status === 'paid') {
           setPaymentState('success')
+          onPaid?.()
           return
         }
         if (payment.status === 'failed') {
@@ -148,6 +150,7 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, pra
       const payment = await completeTestPayment(testCheckoutReference, status)
       if (payment.status === 'paid') {
         setPaymentState('success')
+        onPaid?.()
       } else {
         setPaymentState('failed')
         setPaymentError('The test payment was declined. You can retry with another test result.')
