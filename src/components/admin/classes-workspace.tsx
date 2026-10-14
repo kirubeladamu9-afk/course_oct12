@@ -123,10 +123,10 @@ let tutors: TutorOption[] = []
 
 const getTodayInputValue = () => new Date().toISOString().slice(0, 10)
 
-const getDateValidation = (schedule: ClassSchedule) => {
+const getDateValidation = (schedule: ClassSchedule, fixedStartDate?: string) => {
   const today = getTodayInputValue()
   return {
-    startInPast: Boolean(schedule.startDate && schedule.startDate < today),
+    startInPast: Boolean(schedule.startDate && schedule.startDate < today && schedule.startDate !== fixedStartDate),
     endInPast: Boolean(schedule.endDate && schedule.endDate < today),
     endBeforeStart: Boolean(schedule.startDate && schedule.endDate && schedule.endDate <= schedule.startDate),
   }
@@ -181,10 +181,11 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const dateValue = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 const parseDateValue = (value: string) => value ? new Date(`${value}T00:00:00`) : null
 
-const ScheduleFields: FC<{ schedule: ClassSchedule; onChange: (schedule: ClassSchedule) => void }> = ({ schedule, onChange }) => {
+const ScheduleFields: FC<{ schedule: ClassSchedule; onChange: (schedule: ClassSchedule) => void; fixedStartDate?: string }> = ({ schedule, onChange, fixedStartDate }) => {
   const [visibleMonth, setVisibleMonth] = useState(() => parseDateValue(schedule.startDate) ?? new Date())
   const [activeDateField, setActiveDateField] = useState<'start' | 'end'>(() => schedule.startDate && !schedule.endDate ? 'end' : 'start')
-  const dateValidation = getDateValidation(schedule)
+  const selectedDateField = fixedStartDate ? 'end' : activeDateField
+  const dateValidation = getDateValidation(schedule, fixedStartDate)
   const today = getTodayInputValue()
   const firstDay = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1)
   const calendarStart = new Date(firstDay)
@@ -193,7 +194,7 @@ const ScheduleFields: FC<{ schedule: ClassSchedule; onChange: (schedule: ClassSc
   const updateDateRange = (date: Date) => {
     const selected = dateValue(date)
     if (selected < today) return
-    if (activeDateField === 'start') {
+    if (selectedDateField === 'start') {
       const endDate = schedule.endDate && schedule.endDate > selected ? schedule.endDate : ''
       onChange({ ...schedule, startDate: selected, endDate })
       setActiveDateField('end')
@@ -207,11 +208,11 @@ const ScheduleFields: FC<{ schedule: ClassSchedule; onChange: (schedule: ClassSc
   return <Paper variant="outlined" sx={{ p: 2 }}>
     <Stack spacing={2}>
       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}>
-        <Box><Typography variant="subtitle2">Class schedule</Typography><Typography variant="caption" color="text.secondary">Select a start date, then extend the end date from one calendar.</Typography></Box>
-        <Stack direction="row" spacing={1}><Button size="small" variant={activeDateField === 'start' ? 'contained' : 'outlined'} aria-pressed={activeDateField === 'start'} onClick={() => setActiveDateField('start')}>From: {schedule.startDate || 'Select date'}</Button><Button size="small" variant={activeDateField === 'end' ? 'contained' : 'outlined'} aria-pressed={activeDateField === 'end'} disabled={!schedule.startDate} onClick={() => setActiveDateField('end')}>Extend to: {schedule.endDate || 'Select date'}</Button></Stack>
+        <Box><Typography variant="subtitle2">Class schedule</Typography><Typography variant="caption" color="text.secondary">{fixedStartDate ? 'The start date is fixed. Extend the end date from the calendar.' : 'Select a start date, then set the end date from one calendar.'}</Typography></Box>
+        <Stack direction="row" spacing={1}><Button size="small" variant={selectedDateField === 'start' ? 'contained' : 'outlined'} aria-pressed={selectedDateField === 'start'} disabled={Boolean(fixedStartDate)} onClick={() => setActiveDateField('start')}>From: {schedule.startDate || 'Select date'}{fixedStartDate ? ' · Fixed' : ''}</Button><Button size="small" variant={selectedDateField === 'end' ? 'contained' : 'outlined'} aria-pressed={selectedDateField === 'end'} disabled={!schedule.startDate} onClick={() => setActiveDateField('end')}>Extend to: {schedule.endDate || 'Select date'}</Button></Stack>
       </Stack>
       <Stack direction="row" justifyContent="space-between" alignItems="center"><IconButton size="small" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1))} aria-label="Previous month">‹</IconButton><Typography sx={{ fontWeight: 700 }}>{visibleMonth.toLocaleString(undefined, { month: 'long', year: 'numeric' })}</Typography><IconButton size="small" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1))} aria-label="Next month">›</IconButton></Stack>
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5 }}>{dayNames.map((day) => <Typography key={day} variant="caption" color="text.secondary" sx={{ textAlign: 'center', fontWeight: 700 }}>{day}</Typography>)}{dates.map((date) => { const value = dateValue(date); const timestamp = date.getTime(); const inRange = start !== null && end !== null && timestamp >= start && timestamp <= end; const isSessionDate = inRange && schedule.days.includes(dayNames[date.getDay()]); const isSelected = value === schedule.startDate || value === schedule.endDate; const beforeMinimumEnd = activeDateField === 'end' && Boolean(schedule.startDate) && (value <= schedule.startDate || value < (schedule.endDate || today)); const disabled = value < today || beforeMinimumEnd; return <Box key={value} component="button" type="button" disabled={disabled} onClick={() => updateDateRange(date)} sx={{ minHeight: 38, border: 1, borderColor: isSelected ? 'primary.main' : isSessionDate ? 'success.main' : 'transparent', borderRadius: 1, backgroundColor: isSelected ? 'primary.main' : isSessionDate ? 'success.light' : 'transparent', color: isSelected ? 'primary.contrastText' : date.getMonth() === visibleMonth.getMonth() ? 'text.primary' : 'text.disabled', cursor: disabled ? 'not-allowed' : 'pointer', font: 'inherit', '&:hover': { borderColor: disabled ? 'transparent' : 'primary.main' }, '&:disabled': { color: 'text.disabled' } }}>{date.getDate()}</Box> })}</Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5 }}>{dayNames.map((day) => <Typography key={day} variant="caption" color="text.secondary" sx={{ textAlign: 'center', fontWeight: 700 }}>{day}</Typography>)}{dates.map((date) => { const value = dateValue(date); const timestamp = date.getTime(); const inRange = start !== null && end !== null && timestamp >= start && timestamp <= end; const isSessionDate = inRange && schedule.days.includes(dayNames[date.getDay()]); const isSelected = value === schedule.startDate || value === schedule.endDate; const beforeMinimumEnd = selectedDateField === 'end' && Boolean(schedule.startDate) && (value <= schedule.startDate || value < (schedule.endDate || today)); const disabled = value < today || beforeMinimumEnd; return <Box key={value} component="button" type="button" disabled={disabled} onClick={() => updateDateRange(date)} sx={{ minHeight: 38, border: 1, borderColor: isSelected ? 'primary.main' : isSessionDate ? 'success.main' : 'transparent', borderRadius: 1, backgroundColor: isSelected ? 'primary.main' : isSessionDate ? 'success.light' : 'transparent', color: isSelected ? 'primary.contrastText' : date.getMonth() === visibleMonth.getMonth() ? 'text.primary' : 'text.disabled', cursor: disabled ? 'not-allowed' : 'pointer', font: 'inherit', '&:hover': { borderColor: disabled ? 'transparent' : 'primary.main' }, '&:disabled': { color: 'text.disabled' } }}>{date.getDate()}</Box> })}</Box>
       <Box><Typography variant="body2" sx={{ mb: 0.75, fontWeight: 600 }}>Recurring session days</Typography><Stack direction="row" spacing={0.75} flexWrap="wrap">{dayNames.slice(1).concat(dayNames[0]).map((day) => <Button key={day} size="small" variant={schedule.days.includes(day) ? 'contained' : 'outlined'} onClick={() => onChange({ ...schedule, days: schedule.days.includes(day) ? schedule.days.filter((current) => current !== day) : [...schedule.days, day] })}>{day}</Button>)}</Stack></Box>
       {dateValidation.startInPast && <Typography color="error" variant="caption">Choose a start date that is not in the past.</Typography>}{dateValidation.endInPast && <Typography color="error" variant="caption">Choose an end date that is today or later.</Typography>}{dateValidation.endBeforeStart && <Typography color="error" variant="caption">The end date must be later than the start date.</Typography>}
       <Typography variant="caption" color="text.secondary">Green dates are the concrete live-session dates inside the selected range.</Typography>
@@ -293,7 +294,8 @@ export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boole
     if (open && !classRecord && values.tutor_id < 1 && tutorOptions[0]) setValues((current) => ({ ...current, tutor_id: tutorOptions[0].id }))
   }, [classRecord, open, values.tutor_id, tutorOptions.length])
 
-  const classDateValidation = getDateValidation(values.schedule)
+  const fixedStartDate = classRecord ? normalizeSchedule(classRecord.schedule).startDate : undefined
+  const classDateValidation = getDateValidation(values.schedule, fixedStartDate)
   const canSave = Boolean((classRecord || values.grade_level !== null) && values.title.trim() && values.tutor_id >= 1 && values.capacity >= 1 && values.schedule.startDate && values.schedule.endDate && values.schedule.days.length && !classDateValidation.startInPast && !classDateValidation.endInPast && !classDateValidation.endBeforeStart)
   const selectablePrograms = classRecord ? Object.keys(programLabels) as ProgramId[] : manageablePrograms
   const gradeOptions = getGradeLevelOptions(values.program_id)
@@ -313,7 +315,7 @@ export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boole
             <FormControl fullWidth required><InputLabel>Tutor</InputLabel><Select label="Tutor" value={tutorOptions.some((tutor) => tutor.id === values.tutor_id) ? values.tutor_id : ''} onChange={(event) => setValues({ ...values, tutor_id: Number(event.target.value) })}>{tutorOptions.map((tutor) => <MenuItem key={tutor.id} value={tutor.id}>{tutor.name}</MenuItem>)}</Select></FormControl>
             <TextField required fullWidth label="Price" type="number" value={values.price} onChange={(event) => setValues({ ...values, price: Math.max(0, Number(event.target.value)) })} inputProps={{ min: 0, step: 0.01 }} />
           </Stack>
-          <Box><Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Class availability</Typography><ScheduleFields schedule={values.schedule} onChange={(schedule) => setValues({ ...values, schedule })} /></Box>
+          <Box><Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Class availability</Typography><ScheduleFields schedule={values.schedule} fixedStartDate={fixedStartDate} onChange={(schedule) => setValues({ ...values, schedule })} /></Box>
           <Box><Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Class curriculum</Typography><CourseEditor curriculumOnly classSchedule={values.schedule} course={{ id: classRecord?.id ?? 0, title: values.title, category: 'Class', level: '', tutor: '', status: 'Draft', students: 0, price: values.price, cover: '', description: '', longDescription: '', learningOutcomes: [], requirements: [], certificate: false, updatedAt: '', modules: normalizeModules(values.modules) }} onChange={(course) => setValues({ ...values, modules: course.modules })} /></Box>
           <Box sx={{ display: 'flex\',, alignItems: \'center\', justifyContent: \'space-between\', gap: 2, p: 2, border: 1, borderColor: \'divider\', borderRadius: 1, backgroundColor: \'background.default' }}><Box><Typography variant="body2" sx={{ fontWeight: 600 }}>{values.published ? 'Published class' : 'Unpublished class'}</Typography><Typography color="text.secondary" variant="caption">Only published classes appear in Active Classes.</Typography></Box><Switch checked={values.published} onChange={(event) => setValues({ ...values, published: event.target.checked })} inputProps={{ 'aria-label': 'Publish class' }} /></Box>
         </Stack>

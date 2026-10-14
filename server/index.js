@@ -3594,7 +3594,7 @@ const isValidClassDate = (value) => {
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
 }
 
-const parseClassPayload = (body) => {
+const parseClassPayload = (body, fixedStartDate) => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null
   const title = typeof body.title === 'string' ? body.title.trim() : ''
   const programId = body.program_id
@@ -3607,7 +3607,7 @@ const parseClassPayload = (body) => {
   const published = body.published
   const gradeLevel = body.grade_level ?? null
   const today = new Date().toISOString().slice(0, 10)
-  const validSchedule = schedule && typeof schedule === 'object' && !Array.isArray(schedule) && isValidClassDate(schedule.startDate) && isValidClassDate(schedule.endDate) && schedule.startDate >= today && schedule.endDate >= today && schedule.endDate > schedule.startDate
+  const validSchedule = schedule && typeof schedule === 'object' && !Array.isArray(schedule) && isValidClassDate(schedule.startDate) && isValidClassDate(schedule.endDate) && (schedule.startDate >= today || schedule.startDate === fixedStartDate) && schedule.endDate >= today && schedule.endDate > schedule.startDate
   if (!title || title.length > 200 || !classPrograms.includes(programId) || !Number.isInteger(tutorId) || tutorId < 1 || !Number.isInteger(capacity) || capacity < 1 || !validSchedule || !hasScheduledClassQuizzes(modules) || meetingLink.length > 2000 || !Number.isFinite(price) || price < 0 || typeof published !== 'boolean' || (gradeLevel !== null && (!Number.isInteger(gradeLevel) || gradeLevel < 1 || gradeLevel > 12))) return null
   return { program_id: programId, title, tutor_id: tutorId, capacity, schedule, meeting_link: meetingLink, modules, price, published, grade_level: gradeLevel }
 }
@@ -3793,16 +3793,20 @@ app.post('/api/admin/classes', requireAdminOrTutor, async (request, response) =>
 
 app.put('/api/admin/classes/:id', requireAdminOrTutor, async (request, response) => {
   const id = parseCourseId(request.params.id)
-  const classPayload = parseClassPayload(request.body)
-  if (id === null || !classPayload) return response.status(400).json({ message: 'Enter valid class details.' })
+  if (id === null) return response.status(400).json({ message: 'Enter valid class details.' })
   const saveResult = await sql.begin(async (transaction) => {
     const [existing] = await transaction`SELECT schedule FROM classes WHERE id = ${id} FOR UPDATE`
     if (!existing) return 'not-found'
+    const classPayload = parseClassPayload(request.body, existing.schedule.startDate)
+    if (!classPayload) return 'invalid'
+    if (classPayload.schedule.startDate !== existing.schedule.startDate) return 'start-date-fixed'
     if (classPayload.schedule.endDate < existing.schedule.endDate) return 'end-date-cannot-shrink'
     const [updated] = await transaction`UPDATE classes SET ${transaction(classPayload)}, updated_at = NOW() WHERE id = ${id} RETURNING id`
     return updated ? 'saved' : 'not-found'
   })
   if (saveResult === 'not-found') return response.status(404).json({ message: 'Class not found.' })
+  if (saveResult === 'invalid') return response.status(400).json({ message: 'Enter valid class details.' })
+  if (saveResult === 'start-date-fixed') return response.status(400).json({ message: 'The class start date cannot be changed.' })
   if (saveResult === 'end-date-cannot-shrink') return response.status(400).json({ message: 'The class end date can only be extended.' })
   return response.json(await refreshClassStatus(id))
 })
