@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { expireQuizAnswers, getQuizTimeLimitSeconds, hasScheduledClassQuizzes, isQuizExpired } from './quiz-timing.js'
+import { expireQuizAnswers, getQuizDeadline, getQuizTimeLimitSeconds, hasScheduledClassQuizzes, isQuizExpired } from './quiz-timing.js'
 
 describe('quiz timing', () => {
   it('matches the learner time limit for question categories', () => {
@@ -12,9 +12,11 @@ describe('quiz timing', () => {
     expect(hasScheduledClassQuizzes([{ lessons: [{ type: 'video' }] }])).toBe(true)
   })
 
-  it('expires at the attempt deadline', () => {
-    expect(isQuizExpired('2025-01-01T10:00:00.000Z', 60, Date.parse('2025-01-01T10:01:00.000Z'))).toBe(true)
-    expect(isQuizExpired('2025-01-01T10:00:00.000Z', 60, Date.parse('2025-01-01T10:00:59.999Z'))).toBe(false)
+  it('expires class quizzes at scheduled start plus the quiz limit', () => {
+    const deadline = getQuizDeadline('2025-01-01T10:00:00.000Z', 90)
+    expect(deadline).toBe('2025-01-01T10:01:30.000Z')
+    expect(isQuizExpired(deadline, Date.parse('2025-01-01T10:01:30.000Z'))).toBe(true)
+    expect(isQuizExpired(deadline, Date.parse('2025-01-01T10:01:29.999Z'))).toBe(false)
   })
 
   it('preserves answered responses and expires blank responses', () => {

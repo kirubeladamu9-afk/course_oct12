@@ -13,7 +13,9 @@ export const getQuizTimeLimitSeconds = (questions) => (Array.isArray(questions) 
 
 export const hasScheduledClassQuizzes = (modules) => (Array.isArray(modules) ? modules : []).flatMap((module) => Array.isArray(module?.lessons) ? module.lessons : []).every((lesson) => lesson?.type !== 'quiz' || (typeof lesson.scheduledAt === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/.test(lesson.scheduledAt) && Number.isFinite(Date.parse(lesson.scheduledAt))))
 
-export const isQuizExpired = (startedAt, timeLimitSeconds, now = Date.now()) => now >= Date.parse(startedAt) + timeLimitSeconds * 1000
+export const getQuizDeadline = (scheduledAt, timeLimitSeconds) => new Date(Date.parse(scheduledAt) + timeLimitSeconds * 1000).toISOString()
+
+export const isQuizExpired = (deadlineAt, now = Date.now()) => now >= Date.parse(deadlineAt)
 
 export const expireQuizAnswers = (answers, questions) => Object.fromEntries((Array.isArray(questions) ? questions : []).map((question) => {
   const answer = answers?.[question.id]

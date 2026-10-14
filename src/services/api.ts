@@ -118,6 +118,7 @@ export interface QuizAttempt {
   startedAt: string
   activeSeconds: number
   timeLimitSeconds?: number
+  deadlineAt?: string
   answers?: Record<number, QuizAnswerRecord>
   violations?: QuizViolation[]
   questionResults?: QuizQuestionResult[]

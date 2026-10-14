@@ -6,7 +6,7 @@ import express from 'express'
 import postgres from 'postgres'
 import { getChangedCourseLessonIds, remapReusedCourseLessonIds } from './course-lesson-identities.js'
 import { getLatestSubmittedQuizAttempts } from './quiz-performance.js'
-import { expireQuizAnswers, getQuizTimeLimitSeconds, hasScheduledClassQuizzes, isQuizExpired } from './quiz-timing.js'
+import { expireQuizAnswers, getQuizDeadline, getQuizTimeLimitSeconds, hasScheduledClassQuizzes, isQuizExpired } from './quiz-timing.js'
 
 const databaseUrl = process.env.DATABASE_URL
 
@@ -414,6 +414,7 @@ const initializeDatabase = async () => {
       started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       active_seconds INTEGER NOT NULL DEFAULT 0 CHECK (active_seconds >= 0),
       time_limit_seconds INTEGER NOT NULL DEFAULT 0 CHECK (time_limit_seconds >= 0),
+      deadline_at TIMESTAMPTZ,
       answers JSONB,
       score INTEGER CHECK (score BETWEEN 0 AND 100),
       passed BOOLEAN,
@@ -424,10 +425,12 @@ const initializeDatabase = async () => {
   `
   await ensureColumns('quiz_attempts', {
     time_limit_seconds: 'INTEGER NOT NULL DEFAULT 0',
+    deadline_at: 'TIMESTAMPTZ',
     violations: "JSONB NOT NULL DEFAULT '[]'::jsonb",
     disqualified: 'BOOLEAN NOT NULL DEFAULT false',
     retake_approved: 'BOOLEAN NOT NULL DEFAULT false',
   })
+  await sql`UPDATE quiz_attempts SET deadline_at = started_at + time_limit_seconds * INTERVAL '1 second' WHERE deadline_at IS NULL AND submitted_at IS NULL AND time_limit_seconds > 0`
   await sql`CREATE INDEX IF NOT EXISTS student_lesson_progress_enrollment_idx ON student_lesson_progress(enrollment_id, last_accessed_at DESC)`
   await sql`CREATE INDEX IF NOT EXISTS quiz_attempts_enrollment_lesson_idx ON quiz_attempts(enrollment_id, lesson_id, submitted_at DESC)`
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS quiz_attempts_one_open_attempt_idx ON quiz_attempts(enrollment_id, lesson_id) WHERE submitted_at IS NULL`
@@ -1926,12 +1929,15 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts', requi
     if (!enrollment) return null
     const lesson = findCourseLesson(enrollment.modules, lessonId)
     if (!lesson || lesson.type !== 'quiz') return { error: 'Quiz lesson not found.' }
+    const timeLimitSeconds = getQuizTimeLimitSeconds(lesson.quizQuestions)
+    let scheduledDeadline = null
     if (enrollment.classId !== null) {
       const scheduledAt = typeof lesson.scheduledAt === 'string' ? Date.parse(lesson.scheduledAt) : NaN
       if (!Number.isFinite(scheduledAt)) return { error: 'This class quiz has no valid start date and time.', status: 409 }
       if (Date.now() < scheduledAt) return { error: 'This quiz is not available yet.', status: 409 }
+      scheduledDeadline = getQuizDeadline(lesson.scheduledAt, timeLimitSeconds)
+      if (Date.now() >= Date.parse(scheduledDeadline)) return { error: 'This quiz is closed.', status: 409 }
     }
-    const timeLimitSeconds = getQuizTimeLimitSeconds(lesson.quizQuestions)
 
     const completedAttempts = await transaction`
       SELECT id, answers, violations, disqualified, passed, retake_approved AS "retakeApproved"
@@ -1952,16 +1958,18 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts', requi
     }
 
     const [attempt] = await transaction`
-      INSERT INTO quiz_attempts (enrollment_id, lesson_id, time_limit_seconds)
-      VALUES (${enrollmentId}, ${lessonId}, ${timeLimitSeconds})
+      INSERT INTO quiz_attempts (enrollment_id, lesson_id, time_limit_seconds, deadline_at)
+      VALUES (${enrollmentId}, ${lessonId}, ${timeLimitSeconds}, COALESCE(${scheduledDeadline}::timestamptz, NOW() + ${timeLimitSeconds} * INTERVAL '1 second'))
       ON CONFLICT (enrollment_id, lesson_id) WHERE submitted_at IS NULL
       DO UPDATE SET time_limit_seconds = CASE WHEN quiz_attempts.time_limit_seconds > 0 THEN quiz_attempts.time_limit_seconds ELSE EXCLUDED.time_limit_seconds END,
+                    deadline_at = COALESCE(quiz_attempts.deadline_at, EXCLUDED.deadline_at),
                     updated_at = NOW()
       RETURNING id::INTEGER AS id,
                 lesson_id::DOUBLE PRECISION AS "lessonId",
                 started_at AS "startedAt",
                 active_seconds AS "activeSeconds",
                 time_limit_seconds AS "timeLimitSeconds",
+                deadline_at AS "deadlineAt",
                 COALESCE(answers, '{}'::jsonb) AS answers,
                 COALESCE(violations, '[]'::jsonb) AS violations,
                 score,
@@ -1993,7 +2001,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts/:attemp
       UPDATE quiz_attempts
       SET violations = COALESCE(violations, '[]'::jsonb) || ${JSON.stringify([{ type: violation.type, occurredAt: violation.occurredAt }])}::jsonb,
           updated_at = NOW()
-      WHERE id = ${attemptId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND submitted_at IS NULL AND NOW() < started_at + time_limit_seconds * INTERVAL '1 second'
+      WHERE id = ${attemptId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND submitted_at IS NULL AND NOW() < deadline_at
       RETURNING id::INTEGER AS id, lesson_id::DOUBLE PRECISION AS "lessonId", started_at AS "startedAt", active_seconds AS "activeSeconds", time_limit_seconds AS "timeLimitSeconds", COALESCE(answers, '{}'::jsonb) AS answers, COALESCE(violations, '[]'::jsonb) AS violations, score, passed, submitted_at AS "submittedAt"
     `
     return attempt ? { attempt } : { error: 'Quiz attempt is no longer active.' }
@@ -2024,7 +2032,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts/:attemp
             ELSE COALESCE(answers, '{}'::jsonb) || ${JSON.stringify({ [questionId]: answer })}::JSONB
           END,
           updated_at = NOW()
-      WHERE id = ${attemptId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND submitted_at IS NULL AND NOW() < started_at + time_limit_seconds * INTERVAL '1 second'
+      WHERE id = ${attemptId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND submitted_at IS NULL AND NOW() < deadline_at
       RETURNING id::INTEGER AS id, lesson_id::DOUBLE PRECISION AS "lessonId", started_at AS "startedAt", active_seconds AS "activeSeconds", time_limit_seconds AS "timeLimitSeconds", COALESCE(answers, '{}'::jsonb) AS answers, score, passed, submitted_at AS "submittedAt"
     `
     return attempt ? { attempt } : { error: 'Quiz attempt is no longer active.' }
@@ -2052,13 +2060,13 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts/:attemp
     const parsedAnswers = parseQuizAnswers(answers, questions)
     if (!parsedAnswers) return { error: 'Invalid quiz answer records.' }
     const [openAttempt] = await transaction`
-      SELECT id, started_at AS "startedAt", time_limit_seconds AS "timeLimitSeconds", COALESCE(answers, '{}'::jsonb) AS answers, disqualified
+      SELECT id, started_at AS "startedAt", time_limit_seconds AS "timeLimitSeconds", deadline_at AS "deadlineAt", COALESCE(answers, '{}'::jsonb) AS answers, disqualified
       FROM quiz_attempts
       WHERE id = ${attemptId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND submitted_at IS NULL
       FOR UPDATE
     `
     if (!openAttempt) return { error: 'Quiz attempt is no longer active.' }
-    const expired = isQuizExpired(openAttempt.startedAt, openAttempt.timeLimitSeconds)
+    const expired = isQuizExpired(openAttempt.deadlineAt)
     const finalAnswers = expired ? expireQuizAnswers(deserializeJson(openAttempt.answers) ?? {}, questions) : parsedAnswers
     const finalDisqualified = disqualified || openAttempt.disqualified
     const correctAnswers = questions.filter((question) => selectedOptionFromRecord(finalAnswers[String(question.id)], question) === question.correctOption).length
@@ -2071,7 +2079,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts/:attemp
           score = ${score},
           passed = ${passed},
           disqualified = ${finalDisqualified},
-          submitted_at = CASE WHEN ${expired} THEN started_at + time_limit_seconds * INTERVAL '1 second' ELSE NOW() END,
+          submitted_at = CASE WHEN ${expired} THEN deadline_at ELSE NOW() END,
           updated_at = NOW()
       WHERE id = ${attemptId}
         AND enrollment_id = ${enrollmentId}
@@ -2082,6 +2090,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts/:attemp
                 started_at AS "startedAt",
                 active_seconds AS "activeSeconds",
                 time_limit_seconds AS "timeLimitSeconds",
+                deadline_at AS "deadlineAt",
                 answers,
                 violations,
                 score,
