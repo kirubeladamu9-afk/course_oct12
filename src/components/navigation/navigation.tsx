@@ -9,7 +9,12 @@ import { navigations } from './navigation.data'
 
 const programPaths = new Set(['popular-course', 'training-programs', '/practice-exams'])
 
-const Navigation: FC<{ isAdmin?: boolean }> = ({ isAdmin = false }) => {
+interface Props {
+  isAdmin?: boolean
+  onNavigate?: () => void
+}
+
+const Navigation: FC<Props> = ({ isAdmin = false, onNavigate }) => {
   const [programsAnchor, setProgramsAnchor] = useState<HTMLElement | null>(null)
   const [activeDestination, setActiveDestination] = useState(() => window.location.pathname.startsWith('/practice-exams') ? '/practice-exams' : 'hero')
 
@@ -28,6 +33,7 @@ const Navigation: FC<{ isAdmin?: boolean }> = ({ isAdmin = false }) => {
       navigateTo(destination)
     }
     setProgramsAnchor(null)
+    onNavigate?.()
   }
 
   const headlineCurve = <Box sx={{ position: 'absolute', top: 12, transform: 'rotate(3deg)', '& img': { width: 44, height: 'auto' } }}><img src="/images/headline-curve.svg" alt="Headline curve" /></Box>
@@ -118,7 +124,10 @@ const Navigation: FC<{ isAdmin?: boolean }> = ({ isAdmin = false }) => {
               href={destinationHref}
               onClick={(event) => {
                 if (isRoute) handleDestinationClick(destination, event)
-                else setProgramsAnchor(null)
+                else {
+                  setProgramsAnchor(null)
+                  onNavigate?.()
+                }
               }}
             >{displayLabel}</MenuItem>
           })}

@@ -29,6 +29,12 @@ const Header: FC<Props> = ({ darkMode, showSocialLinks = false, onSignIn, onTogg
   const { breakpoints } = useTheme()
   const matchMobileView = useMediaQuery(breakpoints.down('md'))
 
+  const closeMenu = () => setVisibleMenu(false)
+  const withCloseMenu = (action: () => void) => () => {
+    closeMenu()
+    action()
+  }
+
   return (
     <Box sx={{ backgroundColor: 'background.paper' }}>
       <Container sx={{ py: { xs: 2, md: 3 } }}>
@@ -64,7 +70,7 @@ const Header: FC<Props> = ({ darkMode, showSocialLinks = false, onSignIn, onTogg
             }}
           >
             <Box /> {/* Magic space */}
-            <Navigation isAdmin={isAdmin} />
+            <Navigation isAdmin={isAdmin} onNavigate={closeMenu} />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               {showSocialLinks && <Box component="ul" aria-label="Social links" sx={{ display: 'flex', alignItems: 'center', gap: 0.25, m: 0, p: 0, listStyle: 'none' }}>
                 {socialLinks.map((item) => <Box component="li" key={item.name}>
@@ -78,7 +84,7 @@ const Header: FC<Props> = ({ darkMode, showSocialLinks = false, onSignIn, onTogg
                   {darkMode ? <LightModeOutlined /> : <DarkModeOutlined />}
                 </IconButton>
               </Tooltip>
-              <AuthNavigation isAdmin={isAdmin} isTutor={isTutor} isStudent={isStudent} darkMode={darkMode} onSignIn={onSignIn} onAdminDashboard={() => navigateTo('/admin')} onTutorDashboard={() => navigateTo('/tutor')} onStudentDashboard={() => navigateTo('/dashboard')} onSignOut={() => { void signOut().then(() => navigateTo('/', true)) }} />
+              <AuthNavigation isAdmin={isAdmin} isTutor={isTutor} isStudent={isStudent} darkMode={darkMode} onSignIn={withCloseMenu(onSignIn)} onAdminDashboard={withCloseMenu(() => navigateTo('/admin'))} onTutorDashboard={withCloseMenu(() => navigateTo('/tutor'))} onStudentDashboard={withCloseMenu(() => navigateTo('/dashboard'))} onSignOut={withCloseMenu(() => { void signOut().then(() => navigateTo('/', true)) })} />
             </Box>
             {visibleMenu && matchMobileView && (
               <IconButton
