@@ -1741,7 +1741,7 @@ app.get('/api/enrollments', requireAuthenticated, async (request, response) => {
       WHERE enrollment_id = enrollments.id
     ) AS session_join_summary ON true
     WHERE enrollments.user_id = ${request.userId}
-      AND ((enrollments.class_id IS NULL AND enrollments.course_id IS NOT NULL) OR classes.published = true)
+      AND ((enrollments.class_status IS NULL AND enrollments.course_id IS NOT NULL) OR classes.published = true)
     ORDER BY lesson_summary."lastActivityAt" DESC NULLS LAST, enrollments.created_at DESC
   `
   response.json(enrollments.map(serializeEnrollment))
