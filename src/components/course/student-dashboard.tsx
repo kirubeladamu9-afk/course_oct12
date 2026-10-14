@@ -726,6 +726,7 @@ const QuizzesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
     const source = enrollment.type === 'class' ? `Class: ${enrollment.classRecord?.title ?? course.title}` : `Course: ${course.title}`
     const lessons = getLessons(course)
     const isQuizAvailable = (lesson: DashboardLesson) => {
+      if (enrollment.type === 'class') return true
       const lessonIndex = lessons.findIndex((item) => item.id === lesson.id)
       return lessonIndex === 0 || completedLessons[course.id]?.includes(lessons[lessonIndex - 1].id) === true
     }
@@ -1182,8 +1183,9 @@ const CourseViewer: FC<{ course: DashboardCourse; progress: number; completedLes
   const hasJoinedLiveSession = Boolean(sessionJoinClicks[selectedLesson.id])
   const canJoinLiveSession = selectedLesson.type === 'live' && Boolean(liveMeetingUrl) && Number.isFinite(liveSessionStart) && Number.isFinite(liveSessionEnd) && now.getTime() >= liveSessionStart && now.getTime() < liveJoinWindowEnd && now.getTime() < liveSessionEnd && !hasJoinedLiveSession
   const isLessonLocked = (lessonId: number) => {
+    if (isClass) return false
     const lessonIndex = lessons.findIndex((lesson) => lesson.id === lessonId)
-    return lessonIndex > 0 && lessons.slice(0, lessonIndex).filter((lesson) => lesson.type !== 'practice').some((lesson) => !completedLessonIds.includes(lesson.id) && !(isClass && attendance[lesson.id] === 'Absent'))
+    return lessonIndex > 0 && lessons.slice(0, lessonIndex).filter((lesson) => lesson.type !== 'practice').some((lesson) => !completedLessonIds.includes(lesson.id))
   }
 
   if (!started) return <>
