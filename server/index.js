@@ -3588,6 +3588,12 @@ app.delete('/api/admin/courses/:id', requireAdminOrTutor, async (request, respon
 const classPrograms = ['international-online-interactive', 'summer-camp', 'ministry-exam-prep']
 const classStatuses = ['pending_schedule', 'open', 'full', 'closed']
 
+const isValidClassDate = (value) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const date = new Date(`${value}T00:00:00.000Z`)
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
+
 const parseClassPayload = (body) => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null
   const title = typeof body.title === 'string' ? body.title.trim() : ''
@@ -3600,7 +3606,8 @@ const parseClassPayload = (body) => {
   const price = Number(body.price)
   const published = body.published
   const gradeLevel = body.grade_level ?? null
-  const validSchedule = schedule && typeof schedule === 'object' && !Array.isArray(schedule) && typeof schedule.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(schedule.startDate) && typeof schedule.endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(schedule.endDate) && schedule.endDate >= schedule.startDate
+  const today = new Date().toISOString().slice(0, 10)
+  const validSchedule = schedule && typeof schedule === 'object' && !Array.isArray(schedule) && isValidClassDate(schedule.startDate) && isValidClassDate(schedule.endDate) && schedule.startDate >= today && schedule.endDate >= today && schedule.endDate > schedule.startDate
   if (!title || title.length > 200 || !classPrograms.includes(programId) || !Number.isInteger(tutorId) || tutorId < 1 || !Number.isInteger(capacity) || capacity < 1 || !validSchedule || !hasScheduledClassQuizzes(modules) || meetingLink.length > 2000 || !Number.isFinite(price) || price < 0 || typeof published !== 'boolean' || (gradeLevel !== null && (!Number.isInteger(gradeLevel) || gradeLevel < 1 || gradeLevel > 12))) return null
   return { program_id: programId, title, tutor_id: tutorId, capacity, schedule, meeting_link: meetingLink, modules, price, published, grade_level: gradeLevel }
 }
