@@ -160,6 +160,7 @@ const formatQuizCountdown = (seconds: number) => `${Math.floor(seconds / 60)}:${
  interface DashboardCourse {
   id: number
   title: string
+  cover?: string | null
   category: string
   level: string
   tutor: string
@@ -267,6 +268,7 @@ const getPhysicsActivityTopic = (curriculumTopic: string | undefined, title: str
 const mapEnrollmentCourse = (enrollment: MyEnrollment): DashboardCourse => ({
   id: getEnrollmentContentId(enrollment),
   title: enrollment.classTitle || enrollment.courseTitle || 'Enrolled class',
+  cover: enrollment.courseCover,
   category: enrollment.classId === null ? enrollment.category || 'Course' : 'Class',
   level: enrollment.level || 'Not specified',
   tutor: enrollment.tutor || enrollment.classTutor || 'Tutor to be confirmed',
@@ -650,21 +652,23 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
   const courseEnrollments = enrollments.filter((enrollment) => enrollment.type === 'course' && enrollment.course)
   return <>
     <ViewHeading title="My Courses" description="Build momentum with the self-paced courses in your learning plan." />
-    {courseEnrollments.length === 0 ? <EmptyState title="No courses yet" description="Your paid course enrollments will appear here." actionLabel="Browse courses" onAction={() => navigateTo('/')} /> : <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>
+    {courseEnrollments.length === 0 ? <EmptyState title="No courses yet" description="Your paid course enrollments will appear here." actionLabel="Browse courses" onAction={() => navigateTo('/')} /> : <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: { xs: 2, md: 2.5 }, alignItems: 'stretch' }}>
       {courseEnrollments.map((enrollment) => {
         const course = enrollment.course!
         const completed = completedLessons[course.id]
         const progress = completed === undefined ? enrollment.progress : getCourseProgress(course, completed)
         const grade = getEnrollmentOverallGrade(enrollment, progress)
-        return <Card key={enrollment.id} elevation={0} sx={{ border: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column' }}>
-          <Box sx={{ minHeight: 110, p: 2.5, display: 'flex', alignItems: 'flex-end', background: 'linear-gradient(135deg, rgba(16, 125, 111, 0.16), rgba(16, 125, 111, 0.04))' }}><MenuBookOutlinedIcon color="primary" sx={{ fontSize: 38 }} /></Box>
-          <CardContent sx={{ display: 'flex', flex: 1, flexDirection: 'column' }}>
-            <Stack direction="row" justifyContent="space-between" spacing={1} sx={{ mb: 1 }}><Chip label={course.category} size="small" color="primary" variant="outlined" /><Typography variant="caption" color="text.secondary">{course.level}</Typography></Stack>
-            <Typography variant="h6" sx={{ mb: 1 }}>{course.title}</Typography>
-            <Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Tutor: {course.tutor}</Typography>
-            <Typography color="text.secondary" variant="body2" sx={{ mb: 1 }}>Time spent: {formatTimeSpent(enrollment.timeSpentSeconds)}</Typography>
-            <Box sx={{ mb: 2 }}><OverallGradeValue grade={grade} />{progress === 100 && grade.letter === 'F' && <Alert severity="warning" sx={{ mt: 1 }}>Course complete, but your grade needs improvement — review quiz results to raise it.</Alert>}</Box>
-            <Box sx={{ mt: 'auto' }}><Stack direction="row" justifyContent="space-between" sx={{ mb: 0.75 }}><Typography variant="body2">Progress</Typography><Typography variant="body2" color="primary.main" sx={{ fontWeight: 700 }}>{progress}%</Typography></Stack><LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4, mb: 2 }} /><Button fullWidth variant="contained" onClick={() => onOpenCourse(course.id)}>{progress ? 'Continue course' : 'Start course'}</Button></Box>
+        return <Card key={enrollment.id} elevation={0} sx={{ overflow: 'hidden', border: 1, borderColor: 'divider', borderRadius: 3.5, display: 'flex', flexDirection: 'column', backgroundColor: 'background.paper', boxShadow: (theme) => `0 5px 18px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.2 : 0.055)}`, transition: 'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease', '&:hover': { transform: 'translateY(-3px)', borderColor: 'primary.light', boxShadow: (theme) => `0 12px 28px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.3 : 0.11)}` } }}>
+          <Box sx={{ position: 'relative', aspectRatio: '16 / 7', minHeight: { xs: 150, sm: 140 }, maxHeight: 210, overflow: 'hidden', background: (theme) => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.32)}, ${alpha(theme.palette.info.main, 0.18)})` }}>
+            {course.cover ? <Box component="img" src={course.cover} alt={`${course.title} course`} sx={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} /> : <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'primary.main', background: 'radial-gradient(circle at 75% 22%, rgba(255,255,255,.62), transparent 34%), linear-gradient(135deg, rgba(16,125,111,.18), rgba(31,91,139,.12))' }}><MenuBookOutlinedIcon sx={{ fontSize: 52, opacity: 0.78 }} /></Box>}
+            <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 42%, rgba(12,24,35,.32))' }} />
+          </Box>
+          <CardContent sx={{ p: { xs: 2, sm: 2.5 }, display: 'flex', flex: 1, flexDirection: 'column', '&:last-child': { pb: { xs: 2, sm: 2.5 } } }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.25} sx={{ mb: 1.25 }}><Chip label={course.category} size="small" sx={{ height: 25, borderRadius: 2, fontWeight: 700, color: 'primary.dark', backgroundColor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.09), '& .MuiChip-label': { px: 1.15 } }} /><Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{course.level}</Typography></Stack>
+            <Typography variant="h6" sx={{ mb: 1.25, minHeight: { sm: 56 }, fontWeight: 800, lineHeight: 1.35, letterSpacing: '-0.02em' }}>{course.title}</Typography>
+            <Stack spacing={0.75} sx={{ mb: 1.5 }}><Stack direction="row" spacing={0.75} alignItems="center"><PersonOutlineIcon sx={{ color: 'text.disabled', fontSize: 17 }} /><Typography color="text.secondary" variant="body2">Tutor: {course.tutor}</Typography></Stack><Stack direction="row" spacing={0.75} alignItems="center"><AccessTimeOutlinedIcon sx={{ color: 'text.disabled', fontSize: 17 }} /><Typography color="text.secondary" variant="body2">Time spent: {formatTimeSpent(enrollment.timeSpentSeconds)}</Typography></Stack></Stack>
+            <Box sx={{ py: 1.25, px: 1.5, mb: 2, borderRadius: 2.5, backgroundColor: 'action.hover' }}><OverallGradeValue grade={grade} />{progress === 100 && grade.letter === 'F' && <Alert severity="warning" sx={{ mt: 1 }}>Course complete, but your grade needs improvement — review quiz results to raise it.</Alert>}</Box>
+            <Box sx={{ mt: 'auto' }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.9 }}><Typography variant="body2" sx={{ fontWeight: 600 }}>Progress</Typography><Typography variant="body2" color="primary.main" sx={{ fontWeight: 800 }}>{progress}%</Typography></Stack><LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4, mb: 2, backgroundColor: 'action.selected', '& .MuiLinearProgress-bar': { borderRadius: 4 } }} /><Button fullWidth variant="contained" onClick={() => onOpenCourse(course.id)} sx={{ minHeight: 44, borderRadius: 2.25, fontWeight: 800, boxShadow: 'none', '&:hover': { boxShadow: 2 } }}>{progress ? 'Continue course' : 'Start course'}</Button></Box>
           </CardContent>
         </Card>
       })}
@@ -676,7 +680,7 @@ const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
   const classEnrollments = enrollments.filter((enrollment, index) => enrollment.type === 'class' && enrollment.classRecord && enrollments.findIndex((other) => other.type === 'class' && other.classRecord?.id === enrollment.classRecord?.id) === index)
   return <>
     <ViewHeading title="My Classes" description="Continue your class curriculum and keep up with live learning sessions." />
-    {classEnrollments.length === 0 ? <EmptyState title="No classes yet" description="Paid class enrollments will appear here once they are assigned." actionLabel="Explore courses" onAction={() => navigateTo('/')} /> : <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>{classEnrollments.map((enrollment) => {
+    {classEnrollments.length === 0 ? <EmptyState title="No classes yet" description="Paid class enrollments will appear here once they are assigned." actionLabel="Explore courses" onAction={() => navigateTo('/')} /> : <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: { xs: 2, md: 2.5 }, alignItems: 'stretch' }}>{classEnrollments.map((enrollment) => {
       const classRecord = enrollment.classRecord!
       const course = classRecord.course!
       const classEnded = classHasEnded(classRecord.schedule, now)
@@ -684,15 +688,17 @@ const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
       const progress = getCourseProgress(course, completedLessons[course.id] ?? [])
       const classRank = getClassRank(gamificationData, classRecord.id)
       const nextLiveLesson = getLessons(course).find((lesson) => lesson.type === 'live' && lesson.scheduledAt && new Date(lesson.scheduledAt).getTime() >= now.getTime())
-      return <Card key={enrollment.id} elevation={0} sx={{ border: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column' }}>
-        <Box sx={{ minHeight: 110, p: 2.5, display: 'flex', alignItems: 'flex-end', background: 'linear-gradient(135deg, rgba(16, 125, 111, 0.16), rgba(16, 125, 111, 0.04))' }}><ClassOutlinedIcon color="primary" sx={{ fontSize: 38 }} /></Box>
-        <CardContent sx={{ display: 'flex', flex: 1, flexDirection: 'column' }}>
-          <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="center" sx={{ mb: 1 }}><Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap"><Chip label={classRecord.status === 'pending_schedule' ? 'Pending schedule' : classEnded || classRecord.status === 'closed' ? 'Closed' : 'Active class'} size="small" color={canOpenClass ? 'success' : 'warning'} variant="outlined" /><ClassRankValue rank={classRank} /></Stack><Typography variant="caption" color="text.secondary">Class</Typography></Stack>
-          <Typography variant="h6" sx={{ mb: 1 }}>{classRecord.title}</Typography>
-          <Typography color="text.secondary" variant="body2">Tutor: {classRecord.tutorName}</Typography>
-          <Typography color="text.secondary" variant="body2" sx={{ mb: 1 }}>{nextLiveLesson?.scheduledAt ? `Next live session: ${new Date(nextLiveLesson.scheduledAt).toLocaleString()}` : 'No live session scheduled yet'}</Typography>
-          <Box sx={{ mb: 2 }}><OverallGradeValue grade={getEnrollmentOverallGrade(enrollment, progress, now)} /></Box>
-          <Box sx={{ mt: 'auto' }}><Stack direction="row" justifyContent="space-between" sx={{ mb: 0.75 }}><Typography variant="body2">Progress</Typography><Typography variant="body2" color="primary.main" sx={{ fontWeight: 700 }}>{progress}%</Typography></Stack><LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4, mb: 2 }} /><Button fullWidth variant="contained" disabled={!canOpenClass} onClick={() => { if (canOpenClass) onOpenCourse(course.id) }}>{classEnded || classRecord.status === 'closed' ? 'Class ended' : progress ? 'Continue class' : 'Open class'}</Button></Box>
+      return <Card key={enrollment.id} elevation={0} sx={{ overflow: 'hidden', border: 1, borderColor: 'divider', borderRadius: 3.5, display: 'flex', flexDirection: 'column', backgroundColor: 'background.paper', boxShadow: (theme) => `0 5px 18px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.2 : 0.055)}`, transition: 'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease', '&:hover': { transform: 'translateY(-3px)', borderColor: 'primary.light', boxShadow: (theme) => `0 12px 28px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.3 : 0.11)}` } }}>
+        <Box sx={{ position: 'relative', aspectRatio: '16 / 7', minHeight: { xs: 150, sm: 140 }, maxHeight: 210, overflow: 'hidden', background: (theme) => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.32)}, ${alpha(theme.palette.info.main, 0.18)})` }}>
+          {course.cover ? <Box component="img" src={course.cover} alt={`${classRecord.title} class`} sx={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} /> : <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'primary.main', background: 'radial-gradient(circle at 75% 22%, rgba(255,255,255,.62), transparent 34%), linear-gradient(135deg, rgba(16,125,111,.18), rgba(31,91,139,.12))' }}><ClassOutlinedIcon sx={{ fontSize: 52, opacity: 0.78 }} /></Box>}
+          <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 42%, rgba(12,24,35,.32))' }} />
+        </Box>
+        <CardContent sx={{ p: { xs: 2, sm: 2.5 }, display: 'flex', flex: 1, flexDirection: 'column', '&:last-child': { pb: { xs: 2, sm: 2.5 } } }}>
+          <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="center" sx={{ mb: 1.25 }}><Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap"><Chip label={classRecord.status === 'pending_schedule' ? 'Pending schedule' : classEnded || classRecord.status === 'closed' ? 'Closed' : 'Active class'} size="small" color={canOpenClass ? 'success' : 'warning'} sx={{ height: 25, borderRadius: 2, fontWeight: 700 }} /><ClassRankValue rank={classRank} /></Stack><Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Class</Typography></Stack>
+          <Typography variant="h6" sx={{ mb: 1.25, minHeight: { sm: 56 }, fontWeight: 800, lineHeight: 1.35, letterSpacing: '-0.02em' }}>{classRecord.title}</Typography>
+          <Stack spacing={0.75} sx={{ mb: 1.5 }}><Stack direction="row" spacing={0.75} alignItems="center"><PersonOutlineIcon sx={{ color: 'text.disabled', fontSize: 17 }} /><Typography color="text.secondary" variant="body2">Tutor: {classRecord.tutorName}</Typography></Stack><Stack direction="row" spacing={0.75} alignItems="center"><AccessTimeOutlinedIcon sx={{ color: 'text.disabled', fontSize: 17 }} /><Typography color="text.secondary" variant="body2">{nextLiveLesson?.scheduledAt ? `Next live session: ${new Date(nextLiveLesson.scheduledAt).toLocaleString()}` : 'No live session scheduled yet'}</Typography></Stack></Stack>
+          <Box sx={{ py: 1.25, px: 1.5, mb: 2, borderRadius: 2.5, backgroundColor: 'action.hover' }}><OverallGradeValue grade={getEnrollmentOverallGrade(enrollment, progress, now)} /></Box>
+          <Box sx={{ mt: 'auto' }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.9 }}><Typography variant="body2" sx={{ fontWeight: 600 }}>Progress</Typography><Typography variant="body2" color="primary.main" sx={{ fontWeight: 800 }}>{progress}%</Typography></Stack><LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4, mb: 2, backgroundColor: 'action.selected', '& .MuiLinearProgress-bar': { borderRadius: 4 } }} /><Button fullWidth variant="contained" disabled={!canOpenClass} onClick={() => { if (canOpenClass) onOpenCourse(course.id) }} sx={{ minHeight: 44, borderRadius: 2.25, fontWeight: 800, boxShadow: 'none', '&:hover': { boxShadow: 2 } }}>{classEnded || classRecord.status === 'closed' ? 'Class ended' : progress ? 'Continue class' : 'Open class'}</Button></Box>
         </CardContent>
       </Card>
     })}</Box>}
