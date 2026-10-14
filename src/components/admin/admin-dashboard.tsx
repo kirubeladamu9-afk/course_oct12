@@ -909,10 +909,13 @@ const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
   const [atRiskStudents, setAtRiskStudents] = useState<AtRiskStudent[]>([])
   const [atRiskLoading, setAtRiskLoading] = useState(true)
   const [atRiskError, setAtRiskError] = useState<string | null>(null)
+  const [classes, setClasses] = useState<AdminClassesWorkspace['classes']>([])
+  const [selectedClassId, setSelectedClassId] = useState<number | 'all'>('all')
 
-  const reloadOverview = async () => {
+  const reloadOverview = async (classId?: number) => {
+    setIsLoading(true)
     try {
-      setOverview(await getAdminDashboardOverview())
+      setOverview(await getAdminDashboardOverview(classId))
       setLoadError(null)
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Unable to load dashboard data.')
@@ -921,18 +924,23 @@ const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
     }
   }
 
-  const reloadAtRisk = () => {
+  const reloadAtRisk = (classId?: number) => {
     setAtRiskLoading(true)
-    return getAdminAtRiskStudents()
-      .then((records) => { setAtRiskStudents(records.filter((student) => student.classTitle !== null)); setAtRiskError(null) })
+    return getAdminAtRiskStudents({ classId, classOnly: true })
+      .then((records) => { setAtRiskStudents(records); setAtRiskError(null) })
       .catch((error) => setAtRiskError(error instanceof Error ? error.message : 'Unable to load at-risk students.'))
       .finally(() => setAtRiskLoading(false))
   }
 
   useEffect(() => {
-    void reloadOverview()
-    void reloadAtRisk()
+    void getAdminClassesWorkspace().then((workspace) => setClasses(workspace.classes)).catch((error) => toast.add({ title: 'Unable to load classes', description: error instanceof Error ? error.message : 'Please try again.', type: 'error' }))
   }, [])
+
+  useEffect(() => {
+    const classId = selectedClassId === 'all' ? undefined : selectedClassId
+    void reloadOverview(classId)
+    void reloadAtRisk(classId)
+  }, [selectedClassId])
 
   return <>
     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'flex-end' }} spacing={2.5} sx={{ mb: 2.25 }}>
@@ -946,6 +954,13 @@ const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
         </Typography>
         <Typography color="text.secondary" sx={{ mt: .8 }}>Here’s the latest snapshot of your learning platform.</Typography>
       </Box>
+      <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 240 } }} disabled={classes.length === 0}>
+        <InputLabel id="dashboard-insights-class-label">Insights class</InputLabel>
+        <Select labelId="dashboard-insights-class-label" label="Insights class" value={selectedClassId} onChange={(event) => setSelectedClassId(event.target.value === 'all' ? 'all' : Number(event.target.value))}>
+          <MenuItem value="all">All classes</MenuItem>
+          {classes.map((classRecord) => <MenuItem key={classRecord.id} value={classRecord.id}>{classRecord.title}</MenuItem>)}
+        </Select>
+      </FormControl>
     </Stack>
 
     <Paper elevation={0} sx={{ position: 'relative', overflow: 'hidden', mb: 2.25, borderRadius: { xs: 3.5, md: 4.5 }, color: '#fff', background: (theme) => theme.palette.mode === 'dark' ? 'linear-gradient(120deg, #103b39 0%, #145d53 58%, #147b68 100%)' : 'linear-gradient(120deg, #123e3a 0%, #17675c 58%, #168773 100%)' }}>

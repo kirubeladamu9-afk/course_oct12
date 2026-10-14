@@ -975,7 +975,8 @@ const getWeakAreas = (modules, quizAttempts, practiceAnswers) => getTopicPerform
   .filter((area) => area.accuracy < 60)
   .sort((first, second) => first.accuracy - second.accuracy || first.topic.localeCompare(second.topic))
 
-const getAdminWeakAreas = async () => {
+const getAdminWeakAreas = async (classId = null) => {
+  const classCondition = classId === null ? sql`` : sql`AND enrollments.class_id = ${classId}`
   const records = await sql`
     SELECT enrollments.student_id AS "studentId",
            CASE WHEN classes.id IS NULL THEN courses.modules ELSE classes.modules END AS modules,
@@ -1002,6 +1003,7 @@ const getAdminWeakAreas = async () => {
     WHERE enrollments.class_id IS NOT NULL
       AND classes.published = true
       AND enrollments.class_status = 'enrolled'
+      ${classCondition}
   `
   const topics = new Map()
   for (const record of records) {
@@ -2763,6 +2765,7 @@ const evaluateAtRiskEnrollment = (record) => {
   return reasons.length ? {
     id: Number(record.id),
     studentId: Number(record.studentId),
+    classId: record.classId === null ? null : Number(record.classId),
     studentName: record.studentName,
     studentEmail: record.studentEmail,
     courseTitle: record.courseTitle,
@@ -2773,11 +2776,13 @@ const evaluateAtRiskEnrollment = (record) => {
   } : null
 }
 
-const getAtRiskStudents = async ({ tutorId = null } = {}) => {
+const getAtRiskStudents = async ({ tutorId = null, classId = null, classOnly = false } = {}) => {
   const tutorCondition = tutorId === null ? sql`` : sql`AND (courses.tutor_id = ${tutorId} OR classes.tutor_id = ${tutorId})`
+  const classCondition = classId !== null ? sql`AND enrollments.class_id = ${classId}` : classOnly ? sql`AND enrollments.class_id IS NOT NULL` : sql``
   const records = await sql`
     SELECT enrollments.id::INTEGER AS id,
            students.id::INTEGER AS "studentId",
+           enrollments.class_id::INTEGER AS "classId",
            COALESCE(NULLIF(users.name, ''), students.full_name) AS "studentName",
            users.email AS "studentEmail",
            courses.title AS "courseTitle",
@@ -2810,13 +2815,18 @@ const getAtRiskStudents = async ({ tutorId = null } = {}) => {
     ) attendance_summary ON true
     WHERE ((enrollments.class_id IS NULL AND enrollments.course_id IS NOT NULL) OR classes.published = true)
       AND (enrollments.class_id IS NULL OR enrollments.class_status = 'enrolled')
+      ${classCondition}
       ${tutorCondition}
     ORDER BY COALESCE(NULLIF(users.name, ''), students.full_name), enrollments.created_at DESC
   `
   return records.map(evaluateAtRiskEnrollment).filter(Boolean)
 }
 
-app.get('/api/admin/at-risk-students', requireAdmin, async (_request, response) => response.json(await getAtRiskStudents()))
+app.get('/api/admin/at-risk-students', requireAdmin, async (request, response) => {
+  const classId = request.query.classId === undefined ? null : parseCourseId(String(request.query.classId))
+  if (request.query.classId !== undefined && classId === null) return response.status(400).json({ message: 'Invalid class id.' })
+  return response.json(await getAtRiskStudents({ classId, classOnly: request.query.classOnly === 'true' }))
+})
 app.get('/api/tutor/at-risk-students', requireTutor, async (request, response) => response.json(await getAtRiskStudents({ tutorId: request.tutorId })))
 
 const getTutorStudentProgress = async (contentType, contentId) => {
@@ -3285,7 +3295,9 @@ app.get('/api/admin/quiz-violations', requireAdmin, async (_request, response) =
   }))
 })
 
-app.get('/api/admin/overview', requireAdmin, async (_request, response) => {
+app.get('/api/admin/overview', requireAdmin, async (request, response) => {
+  const classId = request.query.classId === undefined ? null : parseCourseId(String(request.query.classId))
+  if (request.query.classId !== undefined && classId === null) return response.status(400).json({ message: 'Invalid class id.' })
   const [totals] = await sql`
     SELECT
       COALESCE(SUM(CASE WHEN status = 'Published' THEN price * students ELSE 0 END), 0)::FLOAT AS "totalRevenue",
@@ -3342,7 +3354,7 @@ app.get('/api/admin/overview', requireAdmin, async (_request, response) => {
     LIMIT 5
   `
 
-  const weakAreas = await getAdminWeakAreas()
+  const weakAreas = await getAdminWeakAreas(classId)
 
   response.json({ ...totals, revenueByMonth, enrollmentsByCategory, revenueByCategory, topCourses, weakAreas })
 })

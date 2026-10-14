@@ -271,6 +271,7 @@ export interface TutorClass {
 export interface AtRiskStudent {
   id: number
   studentId: number
+  classId: number | null
   studentName: string
   studentEmail: string
   courseTitle: string | null
@@ -664,8 +665,13 @@ export const updateTutorProfile = async (profile: Partial<Pick<AdminTutor, 'name
   return response.json()
 }
 
-export const getAdminAtRiskStudents = async (): Promise<AtRiskStudent[]> => {
-  const response = await requestApi('/api/admin/at-risk-students')
+export const getAdminAtRiskStudents = async (options: { classId?: number; classOnly?: boolean } = {}): Promise<AtRiskStudent[]> => {
+  const query = new URLSearchParams()
+  if (options.classId !== undefined) query.set('classId', String(options.classId))
+  if (options.classOnly) query.set('classOnly', 'true')
+  const queryString = query.toString()
+  const search = queryString ? `?${queryString}` : ''
+  const response = await requestApi(`/api/admin/at-risk-students${search}`)
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
 }
@@ -700,8 +706,9 @@ export const getAdminRegistrations = async (): Promise<AdminRegistration[]> => {
   return response.json()
 }
 
-export const getAdminDashboardOverview = async (): Promise<AdminDashboardOverview> => {
-  const response = await requestApi('/api/admin/overview')
+export const getAdminDashboardOverview = async (classId?: number): Promise<AdminDashboardOverview> => {
+  const query = classId === undefined ? '' : `?classId=${classId}`
+  const response = await requestApi(`/api/admin/overview${query}`)
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
 }
