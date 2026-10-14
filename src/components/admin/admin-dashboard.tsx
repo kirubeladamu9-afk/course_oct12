@@ -924,7 +924,7 @@ const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
   const reloadAtRisk = () => {
     setAtRiskLoading(true)
     return getAdminAtRiskStudents()
-      .then((records) => { setAtRiskStudents(records); setAtRiskError(null) })
+      .then((records) => { setAtRiskStudents(records.filter((student) => student.classTitle !== null)); setAtRiskError(null) })
       .catch((error) => setAtRiskError(error instanceof Error ? error.message : 'Unable to load at-risk students.'))
       .finally(() => setAtRiskLoading(false))
   }

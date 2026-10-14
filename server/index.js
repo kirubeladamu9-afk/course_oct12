@@ -999,8 +999,9 @@ const getAdminWeakAreas = async () => {
       FROM practice_answers
       WHERE enrollment_id = enrollments.id
     ) AS practice_summary ON true
-    WHERE ((enrollments.class_id IS NULL AND enrollments.course_id IS NOT NULL) OR classes.published = true)
-      AND (enrollments.class_id IS NULL OR enrollments.class_status = 'enrolled')
+    WHERE enrollments.class_id IS NOT NULL
+      AND classes.published = true
+      AND enrollments.class_status = 'enrolled'
   `
   const topics = new Map()
   for (const record of records) {
