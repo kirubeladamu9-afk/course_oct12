@@ -2919,12 +2919,13 @@ app.get('/api/tutor/grading/submissions', requireTutor, async (request, response
       AND ((classes.id IS NULL AND courses.tutor_id = ${request.tutorId}) OR (classes.id IS NOT NULL AND classes.tutor_id = ${request.tutorId} AND classes.published = true))
     ORDER BY attempts.submitted_at DESC, attempts.id DESC
   `
-  return response.json(rows.map((row) => {
+  return response.json(rows.flatMap((row) => {
     const modules = deserializeJson(row.modules) ?? []
     const lesson = getCourseLessons(modules).find((item) => item?.id === Number(row.lessonId))
-    const questions = Array.isArray(lesson?.quizQuestions) ? lesson.quizQuestions : []
+    if (lesson?.type !== 'quiz') return []
+    const questions = Array.isArray(lesson.quizQuestions) ? lesson.quizQuestions : []
     const answers = normalizeQuizAnswers(row.answers, questions)
-    return {
+    return [{
       id: row.id,
       contentType: row.contentType,
       contentId: row.contentId,
@@ -2948,7 +2949,7 @@ app.get('/api/tutor/grading/submissions', requireTutor, async (request, response
           isCorrect: selectedOption === question.correctOption,
         }
       }),
-    }
+    }]
   }))
 })
 
