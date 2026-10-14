@@ -1161,8 +1161,9 @@ const CourseEditorPage: FC<CourseEditorPageProps> = ({ mode, courseId }) => {
       <PageHeading
         title={mode === 'new' ? 'New course' : 'Edit course'}
         description={mode === 'new' ? 'Create a course and build its learning path.' : `Update ${course.title} and its learning path.`}
-        action={<Stack direction="row" spacing={1}><Button label="Back to courses" variant="text" onClick={() => navigateTo('/admin/courses')} /><Button label={mode === 'new' ? 'Create course' : 'Save changes'} onClick={() => void saveCourse()} disabled={isSaving} /></Stack>}
+        action={<Stack direction="row" spacing={1}><Button label="Back to courses" variant="text" onClick={() => navigateTo('/admin/courses')} disabled={isSaving} /><Button label={isSaving ? 'Saving course...' : mode === 'new' ? 'Create course' : 'Save changes'} onClick={() => void saveCourse()} disabled={isSaving} /></Stack>}
       />
+      {isSaving && <Box role="status" aria-live="polite" sx={{ mb: 2 }}><Alert severity="info" icon={<CircularProgress size={18} color="inherit" />} sx={{ mb: 1 }}>Saving course and lesson updates. This may take a moment; please keep this page open.</Alert><LinearProgress aria-label="Saving course" /></Box>}
       <CourseEditor course={course} onChange={setCourse} isClassLinked={isClassLinked} allowedLessonTypes={getAllowedCourseLessonTypes(course.id)} />
     </>
   )
