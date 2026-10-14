@@ -2249,6 +2249,8 @@ app.post('/api/payments/chapa/class', requireAuthenticated, async (request, resp
   if (isClassEnrollmentClosed(deserializeJson(classRecord.schedule))) {
     return response.status(409).json({ message: 'This batch has already started. Enrollment is closed.' })
   }
+  const [existingEnrollment] = await sql`SELECT id FROM enrollments WHERE user_id = ${request.userId} AND class_id = ${classId} LIMIT 1`
+  if (existingEnrollment) return response.status(409).json({ message: 'You are already enrolled in this batch.' })
 
   const students = [{
     fullName: classRecord.name.trim() || 'Student',
