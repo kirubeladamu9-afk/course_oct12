@@ -949,10 +949,13 @@ const getTopicPerformance = (modules, quizAttempts, practiceAnswers) => {
     topics.set(key, current)
   }
   const lessons = getCourseLessons(modules)
-  for (const attempt of getLatestSubmittedQuizAttempts(quizAttempts)) {
+  for (const attempt of getLatestSubmittedQuizAttempts(quizAttempts.filter((item) => !item.disqualified))) {
     const questions = lessons.find((lesson) => lesson?.id === attempt.lessonId)?.quizQuestions ?? []
     const answers = normalizeQuizAnswers(attempt.answers, questions)
-    for (const question of questions) addAnswer(question.topic, selectedOptionFromRecord(answers[String(question.id)], question) === question.correctOption)
+    for (const question of questions) {
+      const selectedOption = selectedOptionFromRecord(answers[String(question.id)], question)
+      if (selectedOption !== null) addAnswer(question.topic, selectedOption === question.correctOption)
+    }
   }
   for (const answer of Array.isArray(practiceAnswers) ? practiceAnswers : []) addAnswer(answer.topic, answer.correct)
   return [...topics.values()].map((area) => ({
