@@ -3144,7 +3144,7 @@ app.patch('/api/admin/practice-exams/:examId/questions/:questionId', requireAdmi
 
 app.get('/api/admin/registrations', requireAdmin, async (_request, response) => {
   const registrations = await sql`
-    SELECT COALESCE(enrollments.id, payments.id)::INTEGER AS id,
+    SELECT payments.id::INTEGER AS id,
            COALESCE(NULLIF(users.name, ''), students.full_name, NULLIF(payments.student_data->0->>'fullName', ''), 'Unknown student') AS student,
            users.email AS email,
            COALESCE(classes.title, courses.title, 'Course registration') AS course,
