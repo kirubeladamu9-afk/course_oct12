@@ -3795,8 +3795,15 @@ app.put('/api/admin/classes/:id', requireAdminOrTutor, async (request, response)
   const id = parseCourseId(request.params.id)
   const classPayload = parseClassPayload(request.body)
   if (id === null || !classPayload) return response.status(400).json({ message: 'Enter valid class details.' })
-  const [updated] = await sql`UPDATE classes SET ${sql(classPayload)}, updated_at = NOW() WHERE id = ${id} RETURNING id`
-  if (!updated) return response.status(404).json({ message: 'Class not found.' })
+  const saveResult = await sql.begin(async (transaction) => {
+    const [existing] = await transaction`SELECT schedule FROM classes WHERE id = ${id} FOR UPDATE`
+    if (!existing) return 'not-found'
+    if (classPayload.schedule.endDate < existing.schedule.endDate) return 'end-date-cannot-shrink'
+    const [updated] = await transaction`UPDATE classes SET ${transaction(classPayload)}, updated_at = NOW() WHERE id = ${id} RETURNING id`
+    return updated ? 'saved' : 'not-found'
+  })
+  if (saveResult === 'not-found') return response.status(404).json({ message: 'Class not found.' })
+  if (saveResult === 'end-date-cannot-shrink') return response.status(400).json({ message: 'The class end date can only be extended.' })
   return response.json(await refreshClassStatus(id))
 })
 

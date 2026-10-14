@@ -183,6 +183,7 @@ const parseDateValue = (value: string) => value ? new Date(`${value}T00:00:00`) 
 
 const ScheduleFields: FC<{ schedule: ClassSchedule; onChange: (schedule: ClassSchedule) => void }> = ({ schedule, onChange }) => {
   const [visibleMonth, setVisibleMonth] = useState(() => parseDateValue(schedule.startDate) ?? new Date())
+  const [activeDateField, setActiveDateField] = useState<'start' | 'end'>(() => schedule.startDate && !schedule.endDate ? 'end' : 'start')
   const dateValidation = getDateValidation(schedule)
   const today = getTodayInputValue()
   const firstDay = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1)
@@ -192,20 +193,25 @@ const ScheduleFields: FC<{ schedule: ClassSchedule; onChange: (schedule: ClassSc
   const updateDateRange = (date: Date) => {
     const selected = dateValue(date)
     if (selected < today) return
-    if (!schedule.startDate || schedule.endDate) onChange({ ...schedule, startDate: selected, endDate: '' })
-    else if (selected < schedule.startDate) onChange({ ...schedule, startDate: selected, endDate: schedule.startDate })
-    else onChange({ ...schedule, endDate: selected })
+    if (activeDateField === 'start') {
+      const endDate = schedule.endDate && schedule.endDate > selected ? schedule.endDate : ''
+      onChange({ ...schedule, startDate: selected, endDate })
+      setActiveDateField('end')
+      return
+    }
+    if (!schedule.startDate || selected <= schedule.startDate || selected < (schedule.endDate || today)) return
+    onChange({ ...schedule, endDate: selected })
   }
   const start = parseDateValue(schedule.startDate)?.getTime() ?? null
   const end = parseDateValue(schedule.endDate)?.getTime() ?? null
   return <Paper variant="outlined" sx={{ p: 2 }}>
     <Stack spacing={2}>
       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}>
-        <Box><Typography variant="subtitle2">Class schedule</Typography><Typography variant="caption" color="text.secondary">Select a date range, recurring session days, and time from one calendar.</Typography></Box>
-        <Stack direction="row" spacing={1}><Typography variant="body2"><strong>From:</strong> {schedule.startDate || 'Select date'}</Typography><Typography variant="body2"><strong>To:</strong> {schedule.endDate || 'Select date'}</Typography></Stack>
+        <Box><Typography variant="subtitle2">Class schedule</Typography><Typography variant="caption" color="text.secondary">Select a start date, then extend the end date from one calendar.</Typography></Box>
+        <Stack direction="row" spacing={1}><Button size="small" variant={activeDateField === 'start' ? 'contained' : 'outlined'} aria-pressed={activeDateField === 'start'} onClick={() => setActiveDateField('start')}>From: {schedule.startDate || 'Select date'}</Button><Button size="small" variant={activeDateField === 'end' ? 'contained' : 'outlined'} aria-pressed={activeDateField === 'end'} disabled={!schedule.startDate} onClick={() => setActiveDateField('end')}>Extend to: {schedule.endDate || 'Select date'}</Button></Stack>
       </Stack>
       <Stack direction="row" justifyContent="space-between" alignItems="center"><IconButton size="small" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1))} aria-label="Previous month">‹</IconButton><Typography sx={{ fontWeight: 700 }}>{visibleMonth.toLocaleString(undefined, { month: 'long', year: 'numeric' })}</Typography><IconButton size="small" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1))} aria-label="Next month">›</IconButton></Stack>
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5 }}>{dayNames.map((day) => <Typography key={day} variant="caption" color="text.secondary" sx={{ textAlign: 'center', fontWeight: 700 }}>{day}</Typography>)}{dates.map((date) => { const value = dateValue(date); const timestamp = date.getTime(); const inRange = start !== null && end !== null && timestamp >= start && timestamp <= end; const isSessionDate = inRange && schedule.days.includes(dayNames[date.getDay()]); const isSelected = value === schedule.startDate || value === schedule.endDate; return <Box key={value} component="button" type="button" disabled={value < today} onClick={() => updateDateRange(date)} sx={{ minHeight: 38, border: 1, borderColor: isSelected ? 'primary.main' : isSessionDate ? 'success.main' : 'transparent', borderRadius: 1, backgroundColor: isSelected ? 'primary.main' : isSessionDate ? 'success.light' : 'transparent', color: isSelected ? 'primary.contrastText' : date.getMonth() === visibleMonth.getMonth() ? 'text.primary' : 'text.disabled', cursor: value < today ? 'not-allowed' : 'pointer', font: 'inherit', '&:hover': { borderColor: value < today ? 'transparent' : 'primary.main' }, '&:disabled': { color: 'text.disabled' } }}>{date.getDate()}</Box> })}</Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5 }}>{dayNames.map((day) => <Typography key={day} variant="caption" color="text.secondary" sx={{ textAlign: 'center', fontWeight: 700 }}>{day}</Typography>)}{dates.map((date) => { const value = dateValue(date); const timestamp = date.getTime(); const inRange = start !== null && end !== null && timestamp >= start && timestamp <= end; const isSessionDate = inRange && schedule.days.includes(dayNames[date.getDay()]); const isSelected = value === schedule.startDate || value === schedule.endDate; const beforeMinimumEnd = activeDateField === 'end' && Boolean(schedule.startDate) && (value <= schedule.startDate || value < (schedule.endDate || today)); const disabled = value < today || beforeMinimumEnd; return <Box key={value} component="button" type="button" disabled={disabled} onClick={() => updateDateRange(date)} sx={{ minHeight: 38, border: 1, borderColor: isSelected ? 'primary.main' : isSessionDate ? 'success.main' : 'transparent', borderRadius: 1, backgroundColor: isSelected ? 'primary.main' : isSessionDate ? 'success.light' : 'transparent', color: isSelected ? 'primary.contrastText' : date.getMonth() === visibleMonth.getMonth() ? 'text.primary' : 'text.disabled', cursor: disabled ? 'not-allowed' : 'pointer', font: 'inherit', '&:hover': { borderColor: disabled ? 'transparent' : 'primary.main' }, '&:disabled': { color: 'text.disabled' } }}>{date.getDate()}</Box> })}</Box>
       <Box><Typography variant="body2" sx={{ mb: 0.75, fontWeight: 600 }}>Recurring session days</Typography><Stack direction="row" spacing={0.75} flexWrap="wrap">{dayNames.slice(1).concat(dayNames[0]).map((day) => <Button key={day} size="small" variant={schedule.days.includes(day) ? 'contained' : 'outlined'} onClick={() => onChange({ ...schedule, days: schedule.days.includes(day) ? schedule.days.filter((current) => current !== day) : [...schedule.days, day] })}>{day}</Button>)}</Stack></Box>
       {dateValidation.startInPast && <Typography color="error" variant="caption">Choose a start date that is not in the past.</Typography>}{dateValidation.endInPast && <Typography color="error" variant="caption">Choose an end date that is today or later.</Typography>}{dateValidation.endBeforeStart && <Typography color="error" variant="caption">The end date must be later than the start date.</Typography>}
       <Typography variant="caption" color="text.secondary">Green dates are the concrete live-session dates inside the selected range.</Typography>
