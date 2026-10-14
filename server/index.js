@@ -6,6 +6,7 @@ import express from 'express'
 import postgres from 'postgres'
 import { getChangedCourseLessonIds, remapReusedCourseLessonIds } from './course-lesson-identities.js'
 import { getLatestSubmittedQuizAttempts } from './quiz-performance.js'
+import { expireQuizAnswers, getQuizTimeLimitSeconds, hasScheduledClassQuizzes, isQuizExpired } from './quiz-timing.js'
 
 const databaseUrl = process.env.DATABASE_URL
 
@@ -412,6 +413,7 @@ const initializeDatabase = async () => {
       lesson_id BIGINT NOT NULL,
       started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       active_seconds INTEGER NOT NULL DEFAULT 0 CHECK (active_seconds >= 0),
+      time_limit_seconds INTEGER NOT NULL DEFAULT 0 CHECK (time_limit_seconds >= 0),
       answers JSONB,
       score INTEGER CHECK (score BETWEEN 0 AND 100),
       passed BOOLEAN,
@@ -421,6 +423,7 @@ const initializeDatabase = async () => {
     )
   `
   await ensureColumns('quiz_attempts', {
+    time_limit_seconds: 'INTEGER NOT NULL DEFAULT 0',
     violations: "JSONB NOT NULL DEFAULT '[]'::jsonb",
     disqualified: 'BOOLEAN NOT NULL DEFAULT false',
     retake_approved: 'BOOLEAN NOT NULL DEFAULT false',
@@ -1923,6 +1926,12 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts', requi
     if (!enrollment) return null
     const lesson = findCourseLesson(enrollment.modules, lessonId)
     if (!lesson || lesson.type !== 'quiz') return { error: 'Quiz lesson not found.' }
+    if (enrollment.classId !== null) {
+      const scheduledAt = typeof lesson.scheduledAt === 'string' ? Date.parse(lesson.scheduledAt) : NaN
+      if (!Number.isFinite(scheduledAt)) return { error: 'This class quiz has no valid start date and time.', status: 409 }
+      if (Date.now() < scheduledAt) return { error: 'This quiz is not available yet.', status: 409 }
+    }
+    const timeLimitSeconds = getQuizTimeLimitSeconds(lesson.quizQuestions)
 
     const completedAttempts = await transaction`
       SELECT id, answers, violations, disqualified, passed, retake_approved AS "retakeApproved"
@@ -1943,14 +1952,16 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts', requi
     }
 
     const [attempt] = await transaction`
-      INSERT INTO quiz_attempts (enrollment_id, lesson_id)
-      VALUES (${enrollmentId}, ${lessonId})
+      INSERT INTO quiz_attempts (enrollment_id, lesson_id, time_limit_seconds)
+      VALUES (${enrollmentId}, ${lessonId}, ${timeLimitSeconds})
       ON CONFLICT (enrollment_id, lesson_id) WHERE submitted_at IS NULL
-      DO UPDATE SET updated_at = NOW()
+      DO UPDATE SET time_limit_seconds = CASE WHEN quiz_attempts.time_limit_seconds > 0 THEN quiz_attempts.time_limit_seconds ELSE EXCLUDED.time_limit_seconds END,
+                    updated_at = NOW()
       RETURNING id::INTEGER AS id,
                 lesson_id::DOUBLE PRECISION AS "lessonId",
                 started_at AS "startedAt",
                 active_seconds AS "activeSeconds",
+                time_limit_seconds AS "timeLimitSeconds",
                 COALESCE(answers, '{}'::jsonb) AS answers,
                 COALESCE(violations, '[]'::jsonb) AS violations,
                 score,
@@ -1962,7 +1973,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts', requi
   })
 
   if (!quizAttempt) return response.status(404).json({ message: 'Course enrollment not found.' })
-  if (quizAttempt.error) return response.status(404).json({ message: quizAttempt.error })
+  if (quizAttempt.error) return response.status(quizAttempt.status ?? 404).json({ message: quizAttempt.error })
   return response.status(201).json(quizAttempt.attempt)
 })
 
@@ -1982,8 +1993,8 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts/:attemp
       UPDATE quiz_attempts
       SET violations = COALESCE(violations, '[]'::jsonb) || ${JSON.stringify([{ type: violation.type, occurredAt: violation.occurredAt }])}::jsonb,
           updated_at = NOW()
-      WHERE id = ${attemptId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND submitted_at IS NULL
-      RETURNING id::INTEGER AS id, lesson_id::DOUBLE PRECISION AS "lessonId", started_at AS "startedAt", active_seconds AS "activeSeconds", COALESCE(answers, '{}'::jsonb) AS answers, COALESCE(violations, '[]'::jsonb) AS violations, score, passed, submitted_at AS "submittedAt"
+      WHERE id = ${attemptId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND submitted_at IS NULL AND NOW() < started_at + time_limit_seconds * INTERVAL '1 second'
+      RETURNING id::INTEGER AS id, lesson_id::DOUBLE PRECISION AS "lessonId", started_at AS "startedAt", active_seconds AS "activeSeconds", time_limit_seconds AS "timeLimitSeconds", COALESCE(answers, '{}'::jsonb) AS answers, COALESCE(violations, '[]'::jsonb) AS violations, score, passed, submitted_at AS "submittedAt"
     `
     return attempt ? { attempt } : { error: 'Quiz attempt is no longer active.' }
   })
@@ -2013,8 +2024,8 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts/:attemp
             ELSE COALESCE(answers, '{}'::jsonb) || ${JSON.stringify({ [questionId]: answer })}::JSONB
           END,
           updated_at = NOW()
-      WHERE id = ${attemptId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND submitted_at IS NULL
-      RETURNING id::INTEGER AS id, lesson_id::DOUBLE PRECISION AS "lessonId", started_at AS "startedAt", active_seconds AS "activeSeconds", COALESCE(answers, '{}'::jsonb) AS answers, score, passed, submitted_at AS "submittedAt"
+      WHERE id = ${attemptId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND submitted_at IS NULL AND NOW() < started_at + time_limit_seconds * INTERVAL '1 second'
+      RETURNING id::INTEGER AS id, lesson_id::DOUBLE PRECISION AS "lessonId", started_at AS "startedAt", active_seconds AS "activeSeconds", time_limit_seconds AS "timeLimitSeconds", COALESCE(answers, '{}'::jsonb) AS answers, score, passed, submitted_at AS "submittedAt"
     `
     return attempt ? { attempt } : { error: 'Quiz attempt is no longer active.' }
   })
@@ -2040,18 +2051,27 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts/:attemp
 
     const parsedAnswers = parseQuizAnswers(answers, questions)
     if (!parsedAnswers) return { error: 'Invalid quiz answer records.' }
-
-    const correctAnswers = questions.filter((question) => selectedOptionFromRecord(parsedAnswers[String(question.id)], question) === question.correctOption).length
+    const [openAttempt] = await transaction`
+      SELECT id, started_at AS "startedAt", time_limit_seconds AS "timeLimitSeconds", COALESCE(answers, '{}'::jsonb) AS answers, disqualified
+      FROM quiz_attempts
+      WHERE id = ${attemptId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND submitted_at IS NULL
+      FOR UPDATE
+    `
+    if (!openAttempt) return { error: 'Quiz attempt is no longer active.' }
+    const expired = isQuizExpired(openAttempt.startedAt, openAttempt.timeLimitSeconds)
+    const finalAnswers = expired ? expireQuizAnswers(deserializeJson(openAttempt.answers) ?? {}, questions) : parsedAnswers
+    const finalDisqualified = disqualified || openAttempt.disqualified
+    const correctAnswers = questions.filter((question) => selectedOptionFromRecord(finalAnswers[String(question.id)], question) === question.correctOption).length
     const score = Math.round((correctAnswers / questions.length) * 100)
     const passThreshold = Number.isInteger(lesson.passThreshold) ? lesson.passThreshold : 70
-    const passed = !disqualified && score >= passThreshold
+    const passed = !finalDisqualified && score >= passThreshold
     const [attempt] = await transaction`
       UPDATE quiz_attempts
-      SET answers = ${JSON.stringify(parsedAnswers)}::JSONB,
+      SET answers = ${JSON.stringify(finalAnswers)}::JSONB,
           score = ${score},
           passed = ${passed},
-          disqualified = ${disqualified},
-          submitted_at = NOW(),
+          disqualified = ${finalDisqualified},
+          submitted_at = CASE WHEN ${expired} THEN started_at + time_limit_seconds * INTERVAL '1 second' ELSE NOW() END,
           updated_at = NOW()
       WHERE id = ${attemptId}
         AND enrollment_id = ${enrollmentId}
@@ -2061,6 +2081,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/quiz-attempts/:attemp
                 lesson_id::DOUBLE PRECISION AS "lessonId",
                 started_at AS "startedAt",
                 active_seconds AS "activeSeconds",
+                time_limit_seconds AS "timeLimitSeconds",
                 answers,
                 violations,
                 score,
@@ -2676,7 +2697,7 @@ app.put('/api/tutor/classes/:id/curriculum', requireTutor, async (request, respo
   const classId = parseCourseId(request.params.id)
   const modules = request.body?.modules
   const lessons = getCourseLessons(modules)
-  if (classId === null || !Array.isArray(modules) || lessons.some((lesson) => !['video', 'article', 'interactive', 'quiz', 'live'].includes(lesson?.type))) {
+  if (classId === null || !Array.isArray(modules) || lessons.some((lesson) => !['video', 'article', 'interactive', 'quiz', 'live'].includes(lesson?.type)) || !hasScheduledClassQuizzes(modules)) {
     return response.status(400).json({ message: 'Enter valid class curriculum lessons.' })
   }
   const [updated] = await sql`
@@ -3571,7 +3592,7 @@ const parseClassPayload = (body) => {
   const published = body.published
   const gradeLevel = body.grade_level ?? null
   const validSchedule = schedule && typeof schedule === 'object' && !Array.isArray(schedule) && typeof schedule.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(schedule.startDate) && typeof schedule.endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(schedule.endDate) && schedule.endDate >= schedule.startDate
-  if (!title || title.length > 200 || !classPrograms.includes(programId) || !Number.isInteger(tutorId) || tutorId < 1 || !Number.isInteger(capacity) || capacity < 1 || !validSchedule || meetingLink.length > 2000 || !Number.isFinite(price) || price < 0 || typeof published !== 'boolean' || (gradeLevel !== null && (!Number.isInteger(gradeLevel) || gradeLevel < 1 || gradeLevel > 12))) return null
+  if (!title || title.length > 200 || !classPrograms.includes(programId) || !Number.isInteger(tutorId) || tutorId < 1 || !Number.isInteger(capacity) || capacity < 1 || !validSchedule || !hasScheduledClassQuizzes(modules) || meetingLink.length > 2000 || !Number.isFinite(price) || price < 0 || typeof published !== 'boolean' || (gradeLevel !== null && (!Number.isInteger(gradeLevel) || gradeLevel < 1 || gradeLevel > 12))) return null
   return { program_id: programId, title, tutor_id: tutorId, capacity, schedule, meeting_link: meetingLink, modules, price, published, grade_level: gradeLevel }
 }
 
