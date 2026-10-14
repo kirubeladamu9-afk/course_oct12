@@ -23,6 +23,8 @@ export interface ScheduleSession {
   classSchedule?: string
   enrollmentId?: number
   lessonId?: number
+  joinedAt?: string
+  attendanceStatus?: 'Present' | 'Absent'
 }
 
 interface ScheduleCalendarProps {
@@ -134,6 +136,7 @@ const ScheduleCalendar: FC<ScheduleCalendarProps> = ({ title, description, sessi
         <Stack spacing={1.5}>
           {upcomingSessions.map(({ session, start }) => {
             const isActive = now.getTime() >= start.getTime() && now.getTime() < getEndTime(session, start)
+            const joinWindowOpen = isActive && now.getTime() < start.getTime() + 15 * 60 * 1000
             const reminder = getReminderLabel(start, now, isActive)
             return <Paper key={session.id} elevation={0} sx={{ p: { xs: 1.75, md: 2 }, border: 1, borderColor: isActive ? 'success.main' : 'divider', backgroundColor: isActive ? 'rgba(46, 125, 50, 0.04)' : 'background.paper' }}>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}>
@@ -149,7 +152,7 @@ const ScheduleCalendar: FC<ScheduleCalendarProps> = ({ title, description, sessi
                   </Stack>
                   <Typography variant="body2" color="text.secondary">{session.lessonTitle}{session.endsAt ? ` · Until ${formatTime(new Date(session.endsAt))}` : ''}</Typography>
                 </Box>
-                {onJoin && (isActive && session.meetingUrl ? <Button variant="contained" size="small" onClick={() => onJoin(session)} startIcon={<VideoCallOutlinedIcon />} sx={{ flexShrink: 0 }}>Join Class</Button> : <Chip size="small" label={isActive ? 'Meeting link unavailable' : 'Scheduled'} variant="outlined" sx={{ alignSelf: { xs: 'flex-start', md: 'center' } }} />)}
+                {onJoin && (isActive ? <Button variant="contained" size="small" disabled={!joinWindowOpen || Boolean(session.joinedAt) || Boolean(session.attendanceStatus) || !session.meetingUrl} onClick={() => onJoin(session)} startIcon={<VideoCallOutlinedIcon />} sx={{ flexShrink: 0 }}>{session.attendanceStatus === 'Present' ? 'Attendance confirmed' : session.attendanceStatus === 'Absent' ? 'Marked absent' : session.joinedAt ? 'Joined — attendance pending' : !session.meetingUrl ? 'Meeting link unavailable' : joinWindowOpen ? 'Join Class' : 'Join window closed'}</Button> : <Chip size="small" label="Scheduled" variant="outlined" sx={{ alignSelf: { xs: 'flex-start', md: 'center' } }} />)}
               </Stack>
             </Paper>
           })}

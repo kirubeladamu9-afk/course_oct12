@@ -1893,6 +1893,12 @@ app.post('/api/enrollments/:enrollmentId/live-sessions/:lessonId/join', requireA
     if (enrollment.classId === null) return { error: 'Live session not found.' }
     const lesson = findCourseLesson(enrollment.modules, lessonId)
     if (!lesson || lesson.type !== 'live') return { error: 'Live session not found.' }
+    const startsAt = new Date(lesson.scheduledAt).getTime()
+    const endsAt = lesson.endsAt ? new Date(lesson.endsAt).getTime() : startsAt + (Number(lesson.estimatedDuration) || 60 * 60) * 1000
+    const now = Date.now()
+    if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt) || now < startsAt || now >= startsAt + 15 * 60 * 1000 || now >= endsAt) {
+      return { error: 'The live-session join window is closed.', status: 409 }
+    }
     const [saved] = await transaction`
       INSERT INTO class_session_join_logs (enrollment_id, lesson_id)
       VALUES (${enrollmentId}, ${lessonId})
@@ -1903,7 +1909,7 @@ app.post('/api/enrollments/:enrollmentId/live-sessions/:lessonId/join', requireA
   })
 
   if (!joinLog) return response.status(404).json({ message: 'Class enrollment not found.' })
-  if (joinLog.error) return response.status(404).json({ message: joinLog.error })
+  if (joinLog.error) return response.status(joinLog.status ?? 404).json({ message: joinLog.error })
   return response.status(201).json(joinLog)
 })
 
