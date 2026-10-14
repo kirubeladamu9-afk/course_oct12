@@ -76,7 +76,6 @@ const RouteLoadingState: React.FC<{ message: string }> = ({ message }) => (
 )
 
 const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
-  const [authMode, setAuthMode] = useState<'sign-in' | 'sign-up' | null>(null)
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname)
   const [homeCourses, setHomeCourses] = useState<Course[] | null>(null)
   const isAdminPath = /^\/admin(?:\/|$)/.test(currentPath)
@@ -87,6 +86,7 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
   const isAboutPath = /^\/about-us\/?$/.test(currentPath)
   const isBookstorePath = /^\/bookstore\/?$/.test(currentPath)
   const isContactPath = /^\/contact-us\/?$/.test(currentPath)
+  const isSignInPath = /^\/sign-in\/?$/.test(currentPath)
   const courseMatch = currentPath.match(/^\/courses\/([^/]+)\/?$/)
   const currentUser = getAuthenticatedUser()
   const isAuthenticated = currentUser !== null
@@ -100,47 +100,44 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
   }, [])
 
   useEffect(() => {
-    const pageName = authMode === 'sign-in'
+    const pageName = isSignInPath
       ? 'Sign In'
-      : authMode === 'sign-up'
-        ? 'Sign Up'
-        : isAdminPath
-          ? getAdminPageTitle(currentPath)
-          : isDashboardPath
-            ? 'Dashboard'
-            : isTutorPath
-              ? 'Tutor Dashboard'
-              : isPracticeCatalogPath
-                ? 'Practice Exams'
-                : practiceExamMatch
-                  ? 'Practice Exam'
-                  : isAboutPath
-                    ? 'About Us'
-                    : isBookstorePath
-                      ? 'Bookstore'
-                      : isContactPath
-                        ? 'Contact Us'
-                        : courseMatch
-                          ? 'Course'
-                          : 'Home'
+      : isAdminPath
+        ? getAdminPageTitle(currentPath)
+        : isDashboardPath
+          ? 'Dashboard'
+          : isTutorPath
+            ? 'Tutor Dashboard'
+            : isPracticeCatalogPath
+              ? 'Practice Exams'
+              : practiceExamMatch
+                ? 'Practice Exam'
+                : isAboutPath
+                  ? 'About Us'
+                  : isBookstorePath
+                    ? 'Bookstore'
+                    : isContactPath
+                      ? 'Contact Us'
+                      : courseMatch
+                        ? 'Course'
+                        : 'Home'
     document.title = `${SITE_NAME} | ${pageName}`
-  }, [authMode, currentPath, isAboutPath, isAdminPath, isBookstorePath, isContactPath, isDashboardPath, isPracticeCatalogPath, isTutorPath, practiceExamMatch, courseMatch])
+  }, [isSignInPath, currentPath, isAboutPath, isAdminPath, isBookstorePath, isContactPath, isDashboardPath, isPracticeCatalogPath, isTutorPath, practiceExamMatch, courseMatch])
 
   useEffect(() => {
     if (isAdminPath || isDashboardPath || isTutorPath || window.location.hash) return
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
-  }, [authMode, currentPath, isAdminPath, isDashboardPath, isTutorPath])
+  }, [currentPath, isAdminPath, isDashboardPath, isTutorPath])
 
   useEffect(() => {
     if (/^\/stem-lab\/?$/.test(currentPath)) navigateTo('/', true)
     if (isAdminPath && !canAccessAdmin) navigateTo('/', true)
     if (isTutorPath && !canAccessTutor) navigateTo('/', true)
     if (isDashboardPath && (!isAuthenticated || currentUser?.role === 'admin' || currentUser?.role === 'tutor')) navigateTo(currentUser?.role === 'admin' ? '/admin' : currentUser?.role === 'tutor' ? '/tutor' : '/', true)
-    if (!isAdminPath && !isDashboardPath && !isTutorPath) setAuthMode(null)
   }, [canAccessAdmin, canAccessTutor, currentPath, currentUser?.role, isAdminPath, isAuthenticated, isDashboardPath, isTutorPath])
 
   useEffect(() => {
-    if (isAdminPath || isDashboardPath || isTutorPath || isPracticeCatalogPath || practiceExamMatch || isAboutPath || isBookstorePath || isContactPath || courseMatch) {
+    if (isAdminPath || isDashboardPath || isTutorPath || isPracticeCatalogPath || practiceExamMatch || isAboutPath || isBookstorePath || isContactPath || isSignInPath || courseMatch) {
       setHomeCourses(null)
       return
     }
@@ -169,6 +166,7 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
   if (isAboutPath) return <InfoPage kind="about" darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
   if (isBookstorePath) return <BookstorePage darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
   if (isContactPath) return <InfoPage kind="contact" darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
+  if (isSignInPath) return <Box component="main"><Header darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /><SignInPage mode="sign-in" /><Footer /></Box>
   if (!courseMatch && homeCourses === null) return <div className="page-loading-state"><SpinnerCustom /></div>
 
   return (
@@ -180,17 +178,8 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
           </div>
         }
       >
-        <Header
-          darkMode={darkMode}
-          onSignIn={() => setAuthMode('sign-in')}
-          onToggleDarkMode={onToggleDarkMode}
-        />
-        {authMode ? (
-          <>
-            <SignInPage mode={authMode} />
-            <Footer />
-          </>
-        ) : courseMatch ? (
+        <Header darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
+        {courseMatch ? (
           <CourseDetailPage courseId={decodeURIComponent(courseMatch[1])} />
         ) : (
           <>

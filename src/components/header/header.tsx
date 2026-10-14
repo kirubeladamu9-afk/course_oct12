@@ -16,11 +16,10 @@ import { Close, DarkModeOutlined, LightModeOutlined, Menu } from '@mui/icons-mat
 interface Props {
   darkMode: boolean
   showSocialLinks?: boolean
-  onSignIn: () => void
   onToggleDarkMode: () => void
 }
 
-const Header: FC<Props> = ({ darkMode, showSocialLinks = false, onSignIn, onToggleDarkMode }) => {
+const Header: FC<Props> = ({ darkMode, showSocialLinks = false, onToggleDarkMode }) => {
   const [visibleMenu, setVisibleMenu] = useState<boolean>(false)
   const currentUser = getAuthenticatedUser()
   const isAdmin = currentUser?.role === 'admin'
@@ -84,7 +83,7 @@ const Header: FC<Props> = ({ darkMode, showSocialLinks = false, onSignIn, onTogg
                   {darkMode ? <LightModeOutlined /> : <DarkModeOutlined />}
                 </IconButton>
               </Tooltip>
-              <AuthNavigation isAdmin={isAdmin} isTutor={isTutor} isStudent={isStudent} darkMode={darkMode} onSignIn={withCloseMenu(onSignIn)} onAdminDashboard={withCloseMenu(() => navigateTo('/admin'))} onTutorDashboard={withCloseMenu(() => navigateTo('/tutor'))} onStudentDashboard={withCloseMenu(() => navigateTo('/dashboard'))} onSignOut={withCloseMenu(() => { void signOut().then(() => navigateTo('/', true)) })} />
+              <AuthNavigation isAdmin={isAdmin} isTutor={isTutor} isStudent={isStudent} darkMode={darkMode} onSignIn={withCloseMenu(() => navigateTo('/sign-in'))} onAdminDashboard={withCloseMenu(() => navigateTo('/admin'))} onTutorDashboard={withCloseMenu(() => navigateTo('/tutor'))} onStudentDashboard={withCloseMenu(() => navigateTo('/dashboard'))} onSignOut={withCloseMenu(() => { void signOut().then(() => navigateTo('/', true)) })} />
             </Box>
             {visibleMenu && matchMobileView && (
               <IconButton
