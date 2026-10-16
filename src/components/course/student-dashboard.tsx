@@ -792,17 +792,54 @@ const PurchasesView: FC = () => {
 const catalogPageSize = 6
 const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; isLoading: boolean; error: string | null }> = ({ courses, enrolledCourseIds, isLoading, error }) => {
   const [page, setPage] = useState(1)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
   const availableCourses = courses.filter((course) => !enrolledCourseIds.has(String(course.id)))
-  const pageCount = Math.ceil(availableCourses.length / catalogPageSize)
-  const visibleCourses = availableCourses.slice((page - 1) * catalogPageSize, page * catalogPageSize)
+  const categoryOptions = Array.from(new Set(availableCourses.map((course) => course.category)))
 
-  useEffect(() => setPage(1), [courses.length, enrolledCourseIds.size])
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+  const filteredCourses = availableCourses.filter((course) => {
+    const matchesSearch = !normalizedQuery || [course.title, course.category].some((value) => value.toLowerCase().includes(normalizedQuery))
+    const matchesCategory = categoryFilter === 'all' || course.category === categoryFilter
+    return matchesSearch && matchesCategory
+  })
+  const pageCount = Math.ceil(filteredCourses.length / catalogPageSize)
+  const visibleCourses = filteredCourses.slice((page - 1) * catalogPageSize, page * catalogPageSize)
+
+  useEffect(() => setPage(1), [courses.length, enrolledCourseIds.size, normalizedQuery, categoryFilter])
 
   return <>
     <ViewHeading title="Other Courses" description="Explore more courses outside your current learning plan." />
     {isLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading other courses" /></Box> : error ? <EmptyState title="Courses unavailable" description={error} /> : availableCourses.length === 0 ? <EmptyState title="No other courses yet" description="You are enrolled in every published course." /> : <>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2 }}>{visibleCourses.map((course) => <Card key={String(course.id)} elevation={0} sx={{ border: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}><Box component="img" src={course.cover} alt={course.title} sx={{ width: '100%', aspectRatio: '16 / 9', objectFit: 'cover' }} /><CardContent sx={{ display: 'flex', flex: 1, flexDirection: 'column' }}><Chip label={course.category} size="small" color="primary" variant="outlined" sx={{ alignSelf: 'flex-start', mb: 1.5 }} /><Typography variant="h6" sx={{ mb: 1 }}>{course.title}</Typography><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 'auto', pt: 2 }}><Typography color="primary.main" sx={{ fontWeight: 700 }}>${course.price}</Typography><Button variant="outlined" size="small" onClick={() => navigateTo(`/courses/${course.id}`)}>View course</Button></Stack></CardContent></Card>)}</Box>
-      {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="Other courses pages" /></Stack>}
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }} sx={{ mb: 2.5 }}>
+        <TextField
+          size="small"
+          placeholder="Search courses..."
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          inputProps={{ 'aria-label': 'Search courses' }}
+          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }}
+          sx={{ flex: 1, minWidth: 0, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
+        />
+        <TextField
+          select
+          size="small"
+          value={categoryFilter}
+          onChange={(event) => setCategoryFilter(event.target.value)}
+          inputProps={{ 'aria-label': 'Filter courses by category' }}
+          InputProps={{ startAdornment: <InputAdornment position="start"><LayersOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }}
+          sx={{ minWidth: { md: 180 }, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
+        >
+          <MenuItem value="all">All categories</MenuItem>
+          {categoryOptions.map((category) => <MenuItem key={category} value={category}>{category}</MenuItem>)}
+        </TextField>
+        <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', ml: { md: 'auto' } }}>{filteredCourses.length} {filteredCourses.length === 1 ? 'course' : 'courses'} found</Typography>
+      </Stack>
+
+      {filteredCourses.length === 0 ? <EmptyState title="No matching courses" description="Try a different search term or category." /> : <>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2 }}>{visibleCourses.map((course) => <Card key={String(course.id)} elevation={0} sx={{ border: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}><Box component="img" src={course.cover} alt={course.title} sx={{ width: '100%', aspectRatio: '16 / 9', objectFit: 'cover' }} /><CardContent sx={{ display: 'flex', flex: 1, flexDirection: 'column' }}><Chip label={course.category} size="small" color="primary" variant="outlined" sx={{ alignSelf: 'flex-start', mb: 1.5 }} /><Typography variant="h6" sx={{ mb: 1 }}>{course.title}</Typography><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 'auto', pt: 2 }}><Typography color="primary.main" sx={{ fontWeight: 700 }}>${course.price}</Typography><Button variant="outlined" size="small" onClick={() => navigateTo(`/courses/${course.id}`)}>View course</Button></Stack></CardContent></Card>)}</Box>
+        {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="Other courses pages" /></Stack>}
+      </>}
     </>}
   </>
 }
