@@ -41,13 +41,13 @@ export const getSyllabusCoverage = ({ topics, lessons, students }: {
   lessons: SyllabusCoverageLesson[]
   students: SyllabusCoverageStudent[]
 }): SyllabusTopicCoverage[] => {
-  const majority = Math.floor(students.length / 2) + 1
+  const requiredStudents = Math.ceil((students.length * 2) / 3)
 
   return topics.map((topic) => {
     const taggedLessons = lessons.filter((lesson) => lesson.syllabusTopicIds?.includes(topic.id))
     const isCovered = taggedLessons.some((lesson) => {
       const masteredCount = students.filter((student) => isMasteredOrPracticing(lesson, student)).length
-      return masteredCount > 0 && masteredCount >= majority
+      return masteredCount > 0 && masteredCount >= requiredStudents
     })
     const status: SyllabusCoverageStatus = isCovered ? 'covered' : taggedLessons.length > 0 ? 'in_progress' : 'not_covered'
     return { topic, status, taggedLessonCount: taggedLessons.length }

@@ -38,13 +38,17 @@ describe('getSyllabusCoverage', () => {
     expect(coverage[0].status).toBe('covered')
   })
 
-  it('requires a majority of the class before a topic is covered', () => {
+  it('requires two-thirds of the class before a topic is covered', () => {
     const lessons = [{ id: 10, syllabusTopicIds: [1] }]
     const oneOfThree = getSyllabusCoverage({ topics, lessons, students: [student([10], [strongAttempt(10)]), student([]), student([])] })
     const twoOfThree = getSyllabusCoverage({ topics, lessons, students: [student([10], [strongAttempt(10)]), student([10], [strongAttempt(10)]), student([])] })
+    const twoOfFour = getSyllabusCoverage({ topics, lessons, students: [student([10], [strongAttempt(10)]), student([10], [strongAttempt(10)]), student([]), student([])] })
+    const threeOfFour = getSyllabusCoverage({ topics, lessons, students: [student([10], [strongAttempt(10)]), student([10], [strongAttempt(10)]), student([10], [strongAttempt(10)]), student([])] })
 
     expect(oneOfThree[0].status).toBe('in_progress')
     expect(twoOfThree[0].status).toBe('covered')
+    expect(twoOfFour[0].status).toBe('in_progress')
+    expect(threeOfFour[0].status).toBe('covered')
   })
 
   it('covers a topic through any one of several tagged lessons', () => {
