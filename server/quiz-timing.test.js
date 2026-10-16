@@ -6,9 +6,14 @@ describe('quiz timing', () => {
     expect(getQuizTimeLimitSeconds([{ type: 'true/false' }, { category: 'essay' }, {}])).toBe(1020)
   })
 
-  it('requires every class quiz to have a valid scheduled date and time', () => {
-    expect(hasScheduledClassQuizzes([{ lessons: [{ type: 'quiz', scheduledAt: '2025-01-01T10:00:00.000Z' }] }])).toBe(true)
-    expect(hasScheduledClassQuizzes([{ lessons: [{ type: 'quiz', scheduledAt: '' }] }])).toBe(false)
+  it('requires every new or changed class quiz to have a valid scheduled date and time', () => {
+    const validQuiz = { id: 1, type: 'quiz', scheduledAt: '2025-01-01T10:00:00.000Z' }
+    const invalidQuiz = { id: 2, type: 'quiz', scheduledAt: '' }
+    const previousModules = [{ lessons: [validQuiz, invalidQuiz] }]
+    expect(hasScheduledClassQuizzes([{ lessons: [validQuiz] }])).toBe(true)
+    expect(hasScheduledClassQuizzes([{ lessons: [{ ...invalidQuiz }] }], previousModules)).toBe(true)
+    expect(hasScheduledClassQuizzes([{ lessons: [{ ...invalidQuiz, scheduledAt: 'invalid' }] }], previousModules)).toBe(false)
+    expect(hasScheduledClassQuizzes([{ lessons: [{ id: 3, type: 'quiz', scheduledAt: '' }] }], previousModules)).toBe(false)
     expect(hasScheduledClassQuizzes([{ lessons: [{ type: 'video' }] }])).toBe(true)
   })
 
