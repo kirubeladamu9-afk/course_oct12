@@ -21,12 +21,13 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import FormLabel from '@mui/material/FormLabel'
 import Radio from '@mui/material/Radio'
 import RadioGroup from '@mui/material/RadioGroup'
+import InputAdornment from '@mui/material/InputAdornment'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
-import { alpha, useTheme } from '@mui/material/styles'
+import { alpha, type Theme, useTheme } from '@mui/material/styles'
 import AccountCircleOutlinedIcon from '@mui/icons-material/AccountCircleOutlined'
 import AccessTimeOutlinedIcon from '@mui/icons-material/AccessTimeOutlined'
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined'
@@ -45,6 +46,8 @@ import MenuIcon from '@mui/icons-material/Menu'
 import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined'
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
+import PhoneOutlinedIcon from '@mui/icons-material/PhoneOutlined'
+import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined'
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import PauseIcon from '@mui/icons-material/Pause'
@@ -820,7 +823,27 @@ const OtherClassesView: FC<{ classes: PublicClass[]; enrolledClassIds: Set<numbe
   </>
 }
 
-const ProfileFact: FC<{ icon: ReactNode; label: string; value: string }> = ({ icon, label, value }) => <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, p: 1.5, border: 1, borderColor: 'divider', borderRadius: 2 }}><Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, flexShrink: 0, borderRadius: 1.5, backgroundColor: 'action.hover', color: 'primary.main' }}>{icon}</Box><Box sx={{ minWidth: 0 }}><Typography variant="overline" color="text.secondary">{label}</Typography><Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</Typography></Box></Box>
+const profileCardSx = {
+  p: { xs: 2.5, md: 3 },
+  border: 1,
+  borderColor: 'divider',
+  borderRadius: 3,
+  backgroundColor: 'background.paper',
+  boxShadow: (theme: Theme) => `0 5px 18px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.2 : 0.055)}`,
+}
+
+const ProfileIconTile: FC<{ icon: ReactNode }> = ({ icon }) => <Box sx={{ display: 'grid', placeItems: 'center', width: 36, height: 36, flexShrink: 0, borderRadius: 2, color: 'primary.main', backgroundColor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.09) }}>{icon}</Box>
+
+const ProfileFact: FC<{ icon: ReactNode; label: string; value: string; active?: boolean }> = ({ icon, label, value, active }) => <Stack direction="row" alignItems="center" spacing={1.25} sx={{ px: 1.5, py: 1.25, minWidth: 0, border: 1, borderColor: 'divider', borderRadius: 2.5, backgroundColor: 'background.default' }}>
+  <Box sx={{ display: 'grid', placeItems: 'center', width: 32, height: 32, flexShrink: 0, borderRadius: 1.5, color: 'primary.main', backgroundColor: 'background.paper', border: 1, borderColor: 'divider' }}>{icon}</Box>
+  <Box sx={{ minWidth: 0, flex: 1 }}>
+    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 600, letterSpacing: .6, textTransform: 'uppercase', lineHeight: 1.4 }}>{label}</Typography>
+    <Stack direction="row" alignItems="center" spacing={0.75} sx={{ minWidth: 0 }}>
+      {active && <Box sx={{ width: 8, height: 8, flexShrink: 0, borderRadius: '50%', backgroundColor: 'success.main' }} />}
+      <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{value}</Typography>
+    </Stack>
+  </Box>
+</Stack>
 
 const ProfileView: FC<{ onUpdateProfile: (profile: { name: string; email: string; phone: string }) => Promise<void> }> = ({ onUpdateProfile }) => {
   const user = getAuthenticatedUser()
@@ -829,23 +852,46 @@ const ProfileView: FC<{ onUpdateProfile: (profile: { name: string; email: string
   const initials = profile.name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
   return <>
     <ViewHeading title="Profile" description="Keep your learner details current and up to date." />
-    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(280px, 0.8fr) minmax(0, 1.2fr)' }, gap: 3 }}>
-      <Paper elevation={0} sx={{ overflow: 'hidden', border: 1, borderColor: 'divider', borderRadius: 2 }}>
-        <Box sx={{ p: { xs: 3, md: 4 }, backgroundColor: 'primary.main', color: 'primary.contrastText' }}>
-          <Avatar sx={{ width: 76, height: 76, mb: 2.5, backgroundColor: 'primary.contrastText', color: 'primary.main', fontSize: 28, fontWeight: 700 }}>{initials || 'AL'}</Avatar>
-          <Typography variant="h4" sx={{ mb: 0.5, color: 'inherit', overflow: 'hidden', textOverflow: 'ellipsis' }}>{profile.name}</Typography>
-          <Typography sx={{ color: 'inherit', opacity: 0.84, overflow: 'hidden', textOverflow: 'ellipsis' }}>{profile.email}</Typography>
-        </Box>
-        <Box sx={{ p: { xs: 2.5, md: 3 } }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.75 }}>Learner overview</Typography>
-          <Typography color="text.secondary" variant="body2" sx={{ mb: 2 }}>Your personal details and learning activity at a glance.</Typography>
-          <Stack spacing={1.25}><ProfileFact icon={<MenuBookOutlinedIcon fontSize="small" />} label="Active courses" value="2 courses in progress" /><ProfileFact icon={<CalendarTodayOutlinedIcon fontSize="small" />} label="Next class" value="Live React Workshop" /><ProfileFact icon={<CheckCircleOutlineIcon fontSize="small" />} label="Account status" value="Active" /></Stack>
-        </Box>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(260px, 340px) minmax(0, 1fr)' }, gap: { xs: 2.5, md: 3 }, alignItems: 'start' }}>
+      <Paper elevation={0} sx={profileCardSx}>
+        <Stack direction="row" alignItems="center" spacing={2} sx={{ minWidth: 0 }}>
+          <Avatar sx={{ width: 56, height: 56, flexShrink: 0, bgcolor: 'primary.main', color: 'primary.contrastText', fontSize: 20, fontWeight: 700 }}>{initials || 'AL'}</Avatar>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h6" noWrap sx={{ fontWeight: 800, lineHeight: 1.3 }}>{profile.name}</Typography>
+            <Typography variant="body2" color="text.secondary" noWrap>{profile.email}</Typography>
+          </Box>
+        </Stack>
+        <Divider sx={{ my: 2.5 }} />
+        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
+          <ProfileIconTile icon={<MenuBookOutlinedIcon fontSize="small" />} />
+          <Box sx={{ minWidth: 0 }}>
+            <Typography component="h2" variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.3 }}>Learner overview</Typography>
+            <Typography color="text.secondary" variant="caption">Your personal details and learning activity at a glance.</Typography>
+          </Box>
+        </Stack>
+        <Stack spacing={1.25}>
+          <ProfileFact icon={<MenuBookOutlinedIcon fontSize="small" />} label="Active courses" value="2 courses in progress" />
+          <ProfileFact icon={<CalendarTodayOutlinedIcon fontSize="small" />} label="Next class" value="Live React Workshop" />
+          <ProfileFact icon={<CheckCircleOutlineIcon fontSize="small" />} label="Account status" value="Active" active />
+        </Stack>
       </Paper>
-      <Paper elevation={0} sx={{ p: { xs: 2.5, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 2 }}>
-        <Typography variant="h5" sx={{ mb: 0.5 }}>Personal information</Typography>
-        <Typography color="text.secondary" variant="body2" sx={{ mb: 3 }}>Update the information used for your learning records and class communications.</Typography>
-        <Box component="form" onSubmit={async (event) => { event.preventDefault(); setIsSaving(true); try { await onUpdateProfile(profile) } finally { setIsSaving(false) } }} sx={{ display: 'grid', gap: 2 }}><TextField required label="Full name" value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} /><TextField required label="Email address" type="email" value={profile.email} onChange={(event) => setProfile({ ...profile, email: event.target.value })} /><TextField label="Phone number" value={profile.phone} onChange={(event) => setProfile({ ...profile, phone: event.target.value })} /><Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 1 }}><Button type="submit" variant="contained" disabled={isSaving} startIcon={<PersonOutlineIcon />}>{isSaving ? 'Saving profile...' : 'Save profile'}</Button></Box></Box>
+      <Paper elevation={0} sx={profileCardSx}>
+        <Stack direction="row" alignItems="center" spacing={1.5}>
+          <ProfileIconTile icon={<PersonOutlineIcon fontSize="small" />} />
+          <Box sx={{ minWidth: 0 }}>
+            <Typography component="h2" variant="h6" sx={{ fontWeight: 800, lineHeight: 1.3 }}>Personal information</Typography>
+            <Typography color="text.secondary" variant="body2">Update the information used for your learning records and class communications.</Typography>
+          </Box>
+        </Stack>
+        <Divider sx={{ my: 2.5 }} />
+        <Box component="form" onSubmit={async (event) => { event.preventDefault(); setIsSaving(true); try { await onUpdateProfile(profile) } finally { setIsSaving(false) } }} sx={{ display: 'grid', gap: 2.25 }}>
+          <TextField required fullWidth label="Full name" value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><PersonOutlineIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }} />
+          <TextField required fullWidth label="Email address" type="email" value={profile.email} onChange={(event) => setProfile({ ...profile, email: event.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><MailOutlineIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }} />
+          <TextField fullWidth label="Phone number" value={profile.phone} onChange={(event) => setProfile({ ...profile, phone: event.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><PhoneOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }} />
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 0.5 }}>
+            <Button type="submit" variant="contained" disabled={isSaving} startIcon={<SaveOutlinedIcon />} sx={{ minHeight: 42, px: 2.5, borderRadius: 2, fontWeight: 700, boxShadow: 'none', '&:hover': { boxShadow: 'none' } }}>{isSaving ? 'Saving profile...' : 'Save profile'}</Button>
+          </Box>
+        </Box>
       </Paper>
     </Box>
   </>
