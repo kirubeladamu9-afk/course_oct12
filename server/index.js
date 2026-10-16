@@ -2743,8 +2743,11 @@ app.put('/api/tutor/courses/:id', requireTutor, async (request, response) => {
 
 app.put('/api/tutor/classes/:id', requireTutor, async (request, response) => {
   const id = parseCourseId(request.params.id)
-  const classPayload = parseClassPayload(request.body)
-  if (id === null || !classPayload) return response.status(400).json({ message: 'Enter valid class details.' })
+  if (id === null) return response.status(400).json({ message: 'Enter valid class details.' })
+  const [existing] = await sql`SELECT schedule FROM classes WHERE id = ${id} AND tutor_id = ${request.tutorId}`
+  if (!existing) return response.status(404).json({ message: 'Class not found.' })
+  const classPayload = parseClassPayload(request.body, existing.schedule?.startDate)
+  if (!classPayload) return response.status(400).json({ message: 'Enter valid class details.' })
   const [updated] = await sql`UPDATE classes SET ${sql(classPayload)}, updated_at = NOW() WHERE id = ${id} AND tutor_id = ${request.tutorId} RETURNING id`
   if (!updated) return response.status(404).json({ message: 'Class not found.' })
   return response.json(await refreshClassStatus(id))
