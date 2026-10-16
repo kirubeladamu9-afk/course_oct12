@@ -9,6 +9,7 @@ import Collapse from '@mui/material/Collapse'
 import Divider from '@mui/material/Divider'
 import Drawer from '@mui/material/Drawer'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import IconButton from '@mui/material/IconButton'
 import LinearProgress from '@mui/material/LinearProgress'
 import CircularProgress from '@mui/material/CircularProgress'
@@ -648,6 +649,12 @@ const getPlannerTopics = (course: DashboardCourse, weakAreas: WeakArea[], quizRe
 
 const masteryLevels: MasteryLevel[] = ['strong', 'shaky', 'unverified', 'not_started']
 const masteryChipColors: Record<MasteryLevel, 'success' | 'warning' | 'info' | 'error'> = { strong: 'success', shaky: 'warning', unverified: 'info', not_started: 'error' }
+const masteryDescriptions: Record<MasteryLevel, string> = {
+  strong: 'you scored well on the quiz for this topic.',
+  shaky: 'you passed, but your score was low or it took a few tries.',
+  unverified: 'marked complete, but there’s no quiz for this topic yet, so we can’t confirm how well you know it.',
+  not_started: 'you haven’t begun this topic.',
+}
 
 const applySavedStudyPlanOrder = (topics: PlannerTopic[], order: number[]) => {
   const topicById = new Map(topics.map((topic) => [topic.lessonId, topic]))
@@ -661,6 +668,7 @@ const PlannerMessage: FC<{ title: string; description: string }> = ({ title, des
 
 const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: DashboardEnrollment; completedLessonIds: number[]; now: Date; onOpenCourse: (courseId: number, lessonId?: number) => void }> = ({ classRecord, enrollment, completedLessonIds, now, onOpenCourse }) => {
   const [savedOrder, setSavedOrder] = useState<number[] | null>(() => readSavedStudyPlanOrder(classRecord.id))
+  const [isMasteryHelpOpen, setIsMasteryHelpOpen] = useState(false)
   const today = toDateKey(now)
   const examDate = classRecord.examDate
   const daysUntilExam = examDate ? getDaysBetween(today, examDate) : 0
@@ -682,14 +690,14 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
   let content: ReactNode
   if (!examDate) content = <PlannerMessage title="Your tutor hasn't set an exam date yet" description="Your study plan will appear here once an exam date is added to this class." />
   else if (daysUntilExam < 0) content = <PlannerMessage title="Your exam date has passed" description="Check with your tutor if you need a revised schedule." />
-  else if (remainingTopics.length === 0) content = <PlannerMessage title="You're all caught up — nothing left to schedule!" description="Every lesson in this class has strong quiz results." />
+  else if (remainingTopics.length === 0) content = <PlannerMessage title="You're all caught up — nothing left to schedule!" description="Every lesson in this class is Mastered." />
   else if (savedOrder === null) content = <PlannerMessage title="Ready when you are" description={`Generate a plan to schedule ${remainingTopics.length} ${remainingTopics.length === 1 ? 'lesson' : 'lessons'} to learn or review before your exam.`} />
   else {
     const plan = buildStudyPlan(applySavedStudyPlanOrder(remainingTopics, savedOrder), today, examDate)
-    content = <Stack spacing={1.25}>
-      {plan.periods.map((period) => <Box key={period.index} sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 2.5 }}>
+    content = <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' }, gap: 1.25 }}>
+      {plan.periods.map((period) => <Box key={period.index} sx={{ p: 1.5, minWidth: 0, border: 1, borderColor: 'divider', borderRadius: 2.5 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{plan.granularity === 'day' ? formatPlanDate(period.startDate, today) : `Week ${period.index + 1} · ${formatPlanDate(period.startDate)} – ${formatPlanDate(period.endDate)}`}</Typography>
-        <Box sx={{ mt: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 1 }}>{period.topics.map((topic) => <Button key={topic.lessonId} onClick={() => onOpenCourse(classRecord.id, topic.lessonId)} sx={{ justifyContent: 'space-between', alignItems: 'center', minWidth: 0, gap: 1, px: 1.25, py: 1, borderRadius: 2, textAlign: 'left', border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: `${masteryChipColors[topic.mastery]}.main`, backgroundColor: (theme) => alpha(theme.palette[masteryChipColors[topic.mastery]].main, 0.06), color: 'text.primary' }}>
+        <Stack spacing={0.75} sx={{ mt: 1 }}>{period.topics.map((topic) => <Button key={topic.lessonId} onClick={() => onOpenCourse(classRecord.id, topic.lessonId)} sx={{ justifyContent: 'space-between', alignItems: 'center', minWidth: 0, gap: 1, px: 1.25, py: 1, borderRadius: 2, textAlign: 'left', border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: `${masteryChipColors[topic.mastery]}.main`, backgroundColor: (theme) => alpha(theme.palette[masteryChipColors[topic.mastery]].main, 0.06), color: 'text.primary' }}>
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
               <Chip size="small" label={MASTERY_LABELS[topic.mastery].toUpperCase()} color={masteryChipColors[topic.mastery]} sx={{ height: 20, fontSize: 11, fontWeight: 800, flexShrink: 0 }} />
@@ -698,9 +706,9 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
             <Typography noWrap variant="caption" color="text.secondary">{topic.moduleTitle}</Typography>
           </Box>
           {topic.weakScore !== null && <Chip size="small" label="Weak" color="warning" />}
-        </Button>)}</Box>
+        </Button>)}</Stack>
       </Box>)}
-    </Stack>
+    </Box>
   }
 
   return <Paper elevation={0} sx={{ p: { xs: 2, md: 2.5 }, mb: 2.5, border: 1, borderColor: 'divider', borderRadius: 3 }}>
@@ -714,7 +722,12 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
         {canPlan && <Button variant={savedOrder === null ? 'contained' : 'outlined'} size="small" startIcon={savedOrder === null ? undefined : <RefreshRoundedIcon />} onClick={createPlan} sx={{ borderRadius: 2, fontWeight: 700 }}>{savedOrder === null ? 'Generate Plan' : 'Regenerate Plan'}</Button>}
       </Stack>
     </Stack>
-    {allTopics.length > 0 && <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>{masteryLevels.map((level) => <Chip key={level} size="small" variant="outlined" color={masteryChipColors[level]} label={`${MASTERY_LABELS[level]}: ${masteryCounts[level]} ${masteryCounts[level] === 1 ? 'topic' : 'topics'}`} sx={{ fontWeight: 700 }} />)}</Box>}
+    {allTopics.length > 0 && <Stack direction="row" alignItems="center" sx={{ flexWrap: 'wrap', gap: 1, mb: 2 }}>
+      {masteryLevels.map((level) => <Chip key={level} size="small" variant="outlined" color={masteryChipColors[level]} label={`${MASTERY_LABELS[level]}: ${masteryCounts[level]} ${masteryCounts[level] === 1 ? 'topic' : 'topics'}`} sx={{ fontWeight: 700 }} />)}
+      <Tooltip arrow placement="top" open={isMasteryHelpOpen} onOpen={() => setIsMasteryHelpOpen(true)} onClose={() => setIsMasteryHelpOpen(false)} title={<Stack spacing={0.75} sx={{ p: 0.5 }}>{masteryLevels.map((level) => <Typography key={level} variant="body2"><b>{MASTERY_LABELS[level]}:</b> {masteryDescriptions[level]}</Typography>)}</Stack>}>
+        <IconButton size="small" aria-label="What do the mastery labels mean?" onClick={() => setIsMasteryHelpOpen((open) => !open)} sx={{ color: 'text.secondary' }}><InfoOutlinedIcon fontSize="small" /></IconButton>
+      </Tooltip>
+    </Stack>}
     {content}
   </Paper>
 }

@@ -12,9 +12,9 @@ export const STRONG_SCORE = 85
 export const STRONG_MAX_ATTEMPT = 2
 
 export const MASTERY_LABELS: Record<MasteryLevel, string> = {
-  strong: 'Strong',
-  shaky: 'Shaky',
-  unverified: 'Unverified',
+  strong: 'Mastered',
+  shaky: 'Needs Practice',
+  unverified: 'Not Yet Proven',
   not_started: 'Not Started',
 }
 
