@@ -50,6 +50,7 @@ const getAdminPageTitle = (pathname: string) => {
   if (normalizedPath === '/admin/tutors') return 'Tutors'
   if (normalizedPath === '/admin/blog') return 'Bookstore'
   if (normalizedPath === '/admin/practice-exams') return 'Practice Exams'
+  if (normalizedPath === '/admin/syllabus') return 'Syllabus Topics'
   if (normalizedPath === '/admin/payments') return 'Payments'
   if (normalizedPath === '/admin/reports') return 'Reports'
   if (normalizedPath === '/admin/violations') return 'Quiz Violations'

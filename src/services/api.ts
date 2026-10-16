@@ -298,6 +298,7 @@ export interface TutorClassStudent {
   sessionJoinClicks: Record<number, string>
   progressPercentage: number
   timeSpentSeconds: number
+  completedLessonIds: number[]
   quizAttempts: QuizAttempt[]
   weakAreas: WeakArea[]
 }
@@ -343,6 +344,49 @@ export const getPracticeExam = async (examId: number): Promise<PracticeExamWithQ
 
 export const getPracticePurchases = async (): Promise<PracticePurchase[]> => {
   const response = await requestApi('/api/practice-purchases')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export interface SyllabusTopic {
+  id: number
+  grade: number
+  title: string
+  description: string
+  position: number
+}
+
+export interface SyllabusTopicPayload {
+  title: string
+  description: string
+}
+
+export const getSyllabusTopics = async (grade?: number): Promise<SyllabusTopic[]> => {
+  const query = grade === undefined ? '' : `?grade=${grade}`
+  const response = await requestApi(`/api/syllabus-topics${query}`)
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const createAdminSyllabusTopic = async (grade: number, payload: SyllabusTopicPayload): Promise<SyllabusTopic> => {
+  const response = await requestApi('/api/admin/syllabus-topics', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ grade, ...payload }) })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const updateAdminSyllabusTopic = async (topicId: number, payload: SyllabusTopicPayload): Promise<SyllabusTopic> => {
+  const response = await requestApi(`/api/admin/syllabus-topics/${topicId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const deleteAdminSyllabusTopic = async (topicId: number): Promise<void> => {
+  const response = await requestApi(`/api/admin/syllabus-topics/${topicId}`, { method: 'DELETE' })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const reorderAdminSyllabusTopics = async (grade: number, topicIds: number[]): Promise<SyllabusTopic[]> => {
+  const response = await requestApi(`/api/admin/syllabus-topics/grades/${grade}/order`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topicIds }) })
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
 }

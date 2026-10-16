@@ -445,6 +445,20 @@ const initializeDatabase = async () => {
   `
 
   await sql`
+    CREATE TABLE IF NOT EXISTS syllabus_topics (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      grade SMALLINT NOT NULL CHECK (grade IN (6, 8, 12)),
+      title TEXT NOT NULL CHECK (char_length(title) BETWEEN 1 AND 200),
+      description TEXT NOT NULL DEFAULT '' CHECK (char_length(description) <= 1000),
+      position INTEGER NOT NULL CHECK (position >= 1),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS syllabus_topics_grade_title_idx ON syllabus_topics (grade, LOWER(title))`
+  await sql`CREATE INDEX IF NOT EXISTS syllabus_topics_grade_position_idx ON syllabus_topics (grade, position)`
+
+  await sql`
     CREATE TABLE IF NOT EXISTS gamification_activity_rewards (
       id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -2930,6 +2944,7 @@ const getTutorStudentProgress = async (contentType, contentId) => {
     return {
       ...student,
       attendance: deserializeJson(student.attendance) ?? {},
+      completedLessonIds: Object.entries(lessonProgress).filter(([, progress]) => progress.completedAt).map(([lessonId]) => Number(lessonId)),
       sessionJoinClicks: deserializeJson(student.sessionJoinClicks) ?? {},
       quizAttempts: deserializeJson(student.quizAttempts) ?? [],
       timeSpentSeconds: Number(student.timeSpentSeconds) || 0,
@@ -3644,6 +3659,105 @@ app.delete('/api/admin/courses/:id', requireAdminOrTutor, async (request, respon
   const [deleted] = await sql`DELETE FROM courses WHERE id = ${id} RETURNING id`
   if (!deleted) return response.status(404).json({ message: 'Course not found.' })
   return response.status(204).end()
+})
+
+const syllabusGrades = [6, 8, 12]
+
+const parseSyllabusGrade = (value) => {
+  const grade = Number(value)
+  return syllabusGrades.includes(grade) ? grade : null
+}
+
+const parseSyllabusTopicPayload = (body) => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null
+  const title = typeof body.title === 'string' ? body.title.trim() : ''
+  const description = typeof body.description === 'string' ? body.description.trim() : ''
+  if (!title || title.length > 200 || description.length > 1000) return null
+  return { title, description }
+}
+
+const syllabusTopicColumns = sql.unsafe(`
+  id::INTEGER AS id,
+  grade::INTEGER AS grade,
+  title,
+  description,
+  position::INTEGER AS position
+`)
+
+app.get('/api/syllabus-topics', requireAdminOrTutor, async (request, response) => {
+  const grade = request.query.grade === undefined ? null : parseSyllabusGrade(request.query.grade)
+  if (request.query.grade !== undefined && grade === null) return response.status(400).json({ message: 'Invalid grade.' })
+  const topics = grade === null
+    ? await sql`SELECT ${syllabusTopicColumns} FROM syllabus_topics ORDER BY grade, position`
+    : await sql`SELECT ${syllabusTopicColumns} FROM syllabus_topics WHERE grade = ${grade} ORDER BY position`
+  return response.json(topics)
+})
+
+app.post('/api/admin/syllabus-topics', requireAdmin, async (request, response) => {
+  const grade = parseSyllabusGrade(request.body?.grade)
+  const payload = parseSyllabusTopicPayload(request.body)
+  if (grade === null || !payload) return response.status(400).json({ message: 'Enter a valid grade, title, and description.' })
+
+  try {
+    const [created] = await sql`
+      INSERT INTO syllabus_topics (grade, title, description, position)
+      VALUES (${grade}, ${payload.title}, ${payload.description}, (SELECT COALESCE(MAX(position), 0) + 1 FROM syllabus_topics WHERE grade = ${grade}))
+      RETURNING ${syllabusTopicColumns}
+    `
+    return response.status(201).json(created)
+  } catch (error) {
+    if (error.code === '23505') return response.status(409).json({ message: 'This grade already has a topic with this title.' })
+    throw error
+  }
+})
+
+app.put('/api/admin/syllabus-topics/:id', requireAdmin, async (request, response) => {
+  const id = parseCourseId(request.params.id)
+  const payload = parseSyllabusTopicPayload(request.body)
+  if (id === null || !payload) return response.status(400).json({ message: 'Enter a valid title and description.' })
+
+  try {
+    const [updated] = await sql`
+      UPDATE syllabus_topics
+      SET title = ${payload.title}, description = ${payload.description}, updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING ${syllabusTopicColumns}
+    `
+    if (!updated) return response.status(404).json({ message: 'Topic not found.' })
+    return response.json(updated)
+  } catch (error) {
+    if (error.code === '23505') return response.status(409).json({ message: 'This grade already has a topic with this title.' })
+    throw error
+  }
+})
+
+app.delete('/api/admin/syllabus-topics/:id', requireAdmin, async (request, response) => {
+  const id = parseCourseId(request.params.id)
+  if (id === null) return response.status(400).json({ message: 'Invalid topic id.' })
+
+  const [deleted] = await sql`DELETE FROM syllabus_topics WHERE id = ${id} RETURNING id`
+  if (!deleted) return response.status(404).json({ message: 'Topic not found.' })
+  return response.status(204).end()
+})
+
+app.put('/api/admin/syllabus-topics/grades/:grade/order', requireAdmin, async (request, response) => {
+  const grade = parseSyllabusGrade(request.params.grade)
+  const topicIds = Array.isArray(request.body?.topicIds) ? request.body.topicIds : null
+  if (grade === null || !topicIds || !topicIds.every(Number.isInteger)) return response.status(400).json({ message: 'Invalid topic order.' })
+
+  const reordered = await sql.begin(async (transaction) => {
+    const current = await transaction`SELECT id::INTEGER AS id FROM syllabus_topics WHERE grade = ${grade} FOR UPDATE`
+    const currentIds = current.map((topic) => topic.id).sort((first, second) => first - second)
+    const requestedIds = [...topicIds].sort((first, second) => first - second)
+    if (currentIds.length !== requestedIds.length || currentIds.some((id, index) => id !== requestedIds[index])) return false
+    for (const [index, id] of topicIds.entries()) {
+      await transaction`UPDATE syllabus_topics SET position = ${index + 1}, updated_at = NOW() WHERE id = ${id}`
+    }
+    return true
+  })
+  if (!reordered) return response.status(400).json({ message: 'The topic order does not match this grade.' })
+
+  return response.json(await sql`SELECT ${syllabusTopicColumns} FROM syllabus_topics WHERE grade = ${grade} ORDER BY position`)
 })
 
 const classPrograms = ['international-online-interactive', 'summer-camp', 'ministry-exam-prep']

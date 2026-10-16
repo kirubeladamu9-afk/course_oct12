@@ -93,6 +93,7 @@ export interface AdminLesson {
   endsAt?: string
   dateOverridden?: boolean
   estimatedDuration?: number
+  syllabusTopicIds?: number[]
 }
 
 export interface AdminCourse {

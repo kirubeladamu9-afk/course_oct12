@@ -44,6 +44,7 @@ import ScheduleCalendar, { type ScheduleSession } from '@/components/schedule-ca
 import { getAuthenticatedUser, getClassLeaderboard, getTutorAtRiskStudents, getTutorClasses, getTutorClassStudents, getTutorCourses, getTutorCourseStudents, getTutorEditOptions, getTutorOverview, saveAuthenticatedUser, updateTutorClass, updateTutorClassAttendance, updateTutorCourse, updateTutorProfile, type AtRiskStudent, type TutorClass, type TutorClassStudent, type TutorOverview } from '@/services/api'
 import AtRiskStudentsPanel from '@/components/at-risk-students-panel'
 import { TutorGradingView } from '@/components/tutor/tutor-grading-view'
+import SyllabusCoveragePanel from '@/components/tutor/syllabus-coverage-panel'
 import { type AdminCourse, type AdminModule } from '@/components/admin/admin-data'
 import { navigateTo } from '@/lib/navigation'
 import { SITE_NAME } from '@/lib/site'
@@ -53,7 +54,7 @@ import { signOut } from '@/services/api'
 import { Logo } from '@/components/logo'
 
 type View = 'overview' | 'schedule' | 'courses' | 'classes' | 'students' | 'grading' | 'profile'
-type ProgressTarget = { type: 'course' | 'class'; id: number; title: string; modules: AdminModule[] }
+type ProgressTarget = { type: 'course' | 'class'; id: number; title: string; modules: AdminModule[]; syllabusGrade?: number | null }
 
 const tutorViewPaths: Record<View, string> = {
   overview: '/tutor',
@@ -154,6 +155,7 @@ const StudentProgressView = ({ target, students, studentsLoading, classRanks, on
     <Button onClick={onBack} sx={{ mb: 2 }}>Back to My {target.type === 'course' ? 'Courses' : 'Classes'}</Button>
     <Typography variant="h4" sx={{ mb: 0.5 }}>{target.title}</Typography>
     <Typography color="text.secondary" sx={{ mb: 3 }}>Student progress</Typography>
+    {target.type === 'class' && typeof target.syllabusGrade === 'number' && !studentsLoading && <SyllabusCoveragePanel grade={target.syllabusGrade} modules={target.modules} students={students} />}
     <Stack spacing={2}>
       {studentsLoading && <Stack direction="row" spacing={1} alignItems="center"><CircularProgress size={20} aria-label="Loading enrolled students" /><Typography color="text.secondary">Loading enrolled students...</Typography></Stack>}
       {!studentsLoading && students.length === 0 && <Typography color="text.secondary">No enrolled students yet.</Typography>}
@@ -380,7 +382,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
       return course ? { ...progressTarget, title: course.title, modules: course.modules } : progressTarget
     }
     const classRecord = classes.find((item) => item.id === progressTarget.id)
-    return classRecord ? { ...progressTarget, title: classRecord.title, modules: classRecord.modules } : progressTarget
+    return classRecord ? { ...progressTarget, title: classRecord.title, modules: classRecord.modules, syllabusGrade: classRecord.programId === 'ministry-exam-prep' ? classRecord.gradeLevel : null } : progressTarget
   }, [progressTarget, courses, classes])
   const visibleCourses = courses.filter((course) => `${course.title} ${course.category}`.toLowerCase().includes(courseSearch.trim().toLowerCase()) && (courseFilter === 'all' || course.status.toLowerCase() === courseFilter))
   const visibleClasses = classes.filter((classRecord) => `${classRecord.title} ${classRecord.programId} ${classRecord.courseTitle ?? ''}`.toLowerCase().includes(classSearch.trim().toLowerCase()) && (classFilter === 'all' || (classFilter === 'published' ? classRecord.published : !classRecord.published)))
