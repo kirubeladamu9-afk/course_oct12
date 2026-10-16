@@ -706,72 +706,146 @@ const LessonDetailsPanel: FC<{ lessonPanel: LessonPanelState; updateLessonDraft:
   </Paper>
 }
 
-const DashboardCharts: FC<Pick<AdminDashboardOverview, 'revenueByMonth' | 'enrollmentsByCategory' | 'revenueByCategory' | 'topCourses'>> = ({ revenueByMonth, enrollmentsByCategory, revenueByCategory, topCourses }) => {
+const DashboardCharts: FC<Pick<AdminDashboardOverview, 'totalRevenue' | 'activeStudents' | 'revenueByMonth' | 'enrollmentsByCategory' | 'revenueByCategory'>> = ({ totalRevenue, activeStudents, revenueByMonth, enrollmentsByCategory, revenueByCategory }) => {
   const theme = useTheme()
+  const isNarrow = useMediaQuery(theme.breakpoints.down('sm'))
+  const formatCurrency = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value)
+  const formatAxisCurrency = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 }).format(value)
+  const formatCount = (value: number) => new Intl.NumberFormat('en-US').format(value)
+  const niceStep = (value: number) => {
+    if (value <= 0) return 1
+    const magnitude = 10 ** Math.floor(Math.log10(value))
+    const normalized = value / magnitude
+    return (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude
+  }
+  const categoryColor = (label: string, index: number) => {
+    const name = label.toLowerCase()
+    if (name.includes('development')) return theme.palette.primary.main
+    if (name.includes('design')) return theme.palette.warning.main
+    return [theme.palette.info.main, theme.palette.secondary.main, theme.palette.success.dark, theme.palette.error.light][index % 4]
+  }
+
+  const revenueWidth = isNarrow ? 380 : 900
+  const revenueHeight = isNarrow ? 250 : 280
+  const revenueMargins = isNarrow ? { top: 24, right: 14, bottom: 40, left: 54 } : { top: 26, right: 20, bottom: 42, left: 78 }
+  const revenuePlotWidth = revenueWidth - revenueMargins.left - revenueMargins.right
+  const revenuePlotHeight = revenueHeight - revenueMargins.top - revenueMargins.bottom
   const maxRevenue = Math.max(0, ...revenueByMonth.map(({ value }) => value))
+  const revenueStep = niceStep(maxRevenue / 4)
+  const revenueAxisMax = revenueStep * 4
+  const revenueTicks = Array.from({ length: 5 }, (_, index) => revenueAxisMax - revenueStep * index)
+  const revenueCoordinates = revenueByMonth.map(({ value }, index) => ({
+    x: revenueMargins.left + (revenueByMonth.length < 2 ? revenuePlotWidth / 2 : (revenuePlotWidth * index) / (revenueByMonth.length - 1)),
+    y: revenueMargins.top + revenuePlotHeight * (1 - value / revenueAxisMax),
+  }))
+  const revenueLine = revenueCoordinates.map(({ x, y }, index) => `${index === 0 ? 'M' : 'L'} ${x} ${y}`).join(' ')
+  const revenueArea = revenueCoordinates.length ? `${revenueLine} L ${revenueCoordinates[revenueCoordinates.length - 1].x} ${revenueMargins.top + revenuePlotHeight} L ${revenueCoordinates[0].x} ${revenueMargins.top + revenuePlotHeight} Z` : ''
+  const revenueLabelIndexes = new Set<number>()
+  if (revenueCoordinates.length) {
+    revenueLabelIndexes.add(0)
+    revenueLabelIndexes.add(revenueCoordinates.length - 1)
+    revenueLabelIndexes.add(revenueByMonth.reduce((best, point, index, points) => point.value > points[best].value ? index : best, 0))
+  }
+
+  const categoryRevenueTotal = revenueByCategory.reduce((total, category) => total + category.value, 0)
+  let gradientEnd = 0
+  const revenueGradient = categoryRevenueTotal > 0 ? revenueByCategory.map(({ value }, index) => {
+    const start = gradientEnd
+    gradientEnd += (value / categoryRevenueTotal) * 100
+    return `${categoryColor(revenueByCategory[index].label, index)} ${start}% ${gradientEnd}%`
+  }).join(', ') : '#e8eef2 0% 100%'
+
+  const enrollmentWidth = isNarrow ? 420 : 620
+  const enrollmentHeight = 290
+  const enrollmentMargins = { top: 24, right: 14, bottom: 68, left: 48 }
+  const enrollmentPlotWidth = enrollmentWidth - enrollmentMargins.left - enrollmentMargins.right
+  const enrollmentPlotHeight = enrollmentHeight - enrollmentMargins.top - enrollmentMargins.bottom
   const maxEnrollments = Math.max(0, ...enrollmentsByCategory.map(({ value }) => value))
-  const maxCourseEnrollments = Math.max(0, ...topCourses.map(({ value }) => value))
-  const totalCategoryRevenue = revenueByCategory.reduce((total, category) => total + category.value, 0)
-  const categoryColors = [theme.palette.primary.main, theme.palette.secondary.main, theme.palette.success.main, theme.palette.warning.main, theme.palette.info.main]
-  const revenuePoints = revenueByMonth.map(({ value }, index) => `${20 + (540 * index) / Math.max(revenueByMonth.length - 1, 1)},${160 - (maxRevenue ? (value / maxRevenue) * 125 : 0)}`).join(' ')
-  const revenueGradient = revenueByCategory.map(({ value }, index) => {
-    const start = revenueByCategory.slice(0, index).reduce((total, category) => total + category.value, 0) / Math.max(totalCategoryRevenue, 1) * 100
-    const end = (start + (value / Math.max(totalCategoryRevenue, 1)) * 100)
-    return `${categoryColors[index % categoryColors.length]} ${start}% ${end}%`
-  }).join(', ')
-  const formatCurrency = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value)
+  const enrollmentStep = Math.max(1, Math.ceil(maxEnrollments / 4))
+  const enrollmentAxisMax = enrollmentStep * 4
+  const enrollmentTicks = Array.from({ length: 5 }, (_, index) => enrollmentAxisMax - enrollmentStep * index)
 
   return (
     <Stack spacing={2}>
-      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2}>
-        <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 3.5, flex: 1, minWidth: 0 }}>
-          <Typography variant="h6">Revenue overview</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Monthly revenue performance</Typography>
-          <Box component="svg" viewBox="0 0 580 190" sx={{ width: '100%', height: 220 }} role="img" aria-label="Revenue trend chart">
-            {[35, 75, 115, 155].map((y) => <line key={y} x1="20" x2="560" y1={y} y2={y} stroke={theme.palette.divider} strokeDasharray="4 4" />)}
-            {maxRevenue > 0 ? <><polyline points={revenuePoints} fill="none" stroke={theme.palette.primary.main} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />{revenueByMonth.map(({ label, value }, index) => { const cx = 20 + (540 * index) / Math.max(revenueByMonth.length - 1, 1); const cy = 160 - (value / maxRevenue) * 125; return <circle key={label} cx={cx} cy={cy} r="5" fill={theme.palette.background.paper} stroke={theme.palette.primary.main} strokeWidth="3" /> })}</> : <text x="290" y="100" fill={theme.palette.text.secondary} fontSize="14" textAnchor="middle">No revenue data available yet</text>}
-            {revenueByMonth.map(({ label }, index) => <text key={label} x={20 + (540 * index) / Math.max(revenueByMonth.length - 1, 1)} y="180" fill={theme.palette.text.secondary} fontSize="12" textAnchor="middle">{label}</text>)}
+      <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', minWidth: 0 }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2}>
+          <Stack direction="row" spacing={1.25} alignItems="center">
+            <Box sx={{ display: 'grid', placeItems: 'center', width: 40, height: 40, flexShrink: 0, borderRadius: 2, color: 'primary.main', backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.1) }}><AssessmentOutlinedIcon /></Box>
+            <Box><Typography variant="h6" sx={{ color: 'text.primary', fontWeight: 750 }}>Revenue Overview</Typography><Typography variant="body2" color="text.secondary">Monthly revenue performance</Typography></Box>
+          </Stack>
+          <Box sx={{ textAlign: { xs: 'left', sm: 'right' } }}><Typography variant="caption" color="text.secondary">Total revenue</Typography><Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.15 }}>{formatCurrency(totalRevenue)}</Typography></Box>
+        </Stack>
+        <Box sx={{ mt: 2.25, minWidth: 0, overflow: 'hidden' }}>
+          <Box component="svg" viewBox={`0 0 ${revenueWidth} ${revenueHeight}`} sx={{ display: 'block', width: '100%', height: 'auto', overflow: 'visible' }} role="img" aria-label="Monthly revenue performance">
+            <defs><linearGradient id="admin-revenue-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={theme.palette.primary.main} stopOpacity="0.2" /><stop offset="100%" stopColor={theme.palette.primary.main} stopOpacity="0.015" /></linearGradient></defs>
+            {revenueTicks.map((tick) => {
+              const y = revenueMargins.top + revenuePlotHeight * (1 - tick / revenueAxisMax)
+              return <g key={tick}><line x1={revenueMargins.left} x2={revenueWidth - revenueMargins.right} y1={y} y2={y} stroke={theme.palette.divider} strokeDasharray="4 5" /><text x={revenueMargins.left - 10} y={y + 4} fill={theme.palette.text.secondary} fontSize={isNarrow ? 10 : 12} textAnchor="end">{formatAxisCurrency(tick)}</text></g>
+            })}
+            {revenueArea && <path d={revenueArea} fill="url(#admin-revenue-area)" />}
+            {revenueLine && <path d={revenueLine} fill="none" stroke={theme.palette.primary.main} strokeWidth={isNarrow ? 3 : 3.5} strokeLinecap="round" strokeLinejoin="round" />}
+            {revenueCoordinates.map(({ x, y }, index) => {
+              const point = revenueByMonth[index]
+              const labelAnchor = index === 0 ? 'start' : index === revenueCoordinates.length - 1 ? 'end' : 'middle'
+              return <g key={`${point.label}-${index}`}><circle cx={x} cy={y} r={isNarrow ? 4 : 5} fill={theme.palette.background.paper} stroke={theme.palette.primary.main} strokeWidth="3"><title>{`${point.label}: ${formatCurrency(point.value)}`}</title></circle>{revenueLabelIndexes.has(index) && <text x={x} y={Math.max(14, y - 12)} fill={theme.palette.text.primary} fontSize={isNarrow ? 10 : 12} fontWeight="700" textAnchor={labelAnchor}>{formatCurrency(point.value)}</text>}</g>
+            })}
+            {revenueByMonth.map(({ label }, index) => {
+              const x = revenueCoordinates[index]?.x ?? revenueMargins.left
+              const anchor = index === 0 ? 'start' : index === revenueByMonth.length - 1 ? 'end' : 'middle'
+              return <text key={`${label}-${index}`} x={x} y={revenueHeight - 12} fill={theme.palette.text.secondary} fontSize={isNarrow ? 10 : 12} textAnchor={anchor}>{label}</text>
+            })}
+            {!revenueByMonth.length && <text x={revenueWidth / 2} y={revenueHeight / 2} fill={theme.palette.text.secondary} fontSize="14" textAnchor="middle">No revenue data available yet</text>}
           </Box>
-        </Paper>
-        <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 3.5, flex: 1, minWidth: 0 }}>
-          <Typography variant="h6">Course enrollments</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Students enrolled by category</Typography>
-          <Box component="svg" viewBox="0 0 580 190" sx={{ width: '100%', height: 220 }} role="img" aria-label="Course enrollment chart">
-            {[35, 75, 115, 155].map((y) => <line key={y} x1="20" x2="560" y1={y} y2={y} stroke={theme.palette.divider} strokeDasharray="4 4" />)}
-            {maxEnrollments > 0 ? enrollmentsByCategory.map(({ label, value }, index) => { const height = (value / maxEnrollments) * 125; const x = 45 + (490 * index) / Math.max(enrollmentsByCategory.length - 1, 1); return <g key={label}><rect x={x} y={160 - height} width="48" height={height} rx="5" fill={index % 2 ? theme.palette.secondary.main : theme.palette.primary.main} /><text x={x + 24} y="180" fill={theme.palette.text.secondary} fontSize="12" textAnchor="middle">{label}</text></g> }) : <text x="290" y="100" fill={theme.palette.text.secondary} fontSize="14" textAnchor="middle">No enrollments available yet</text>}
-          </Box>
-        </Paper>
-      </Stack>
-      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2}>
-        <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 3.5, flex: 1, minWidth: 0 }}>
-          <Typography variant="h6">Revenue by category</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Published course revenue distribution</Typography>
-          {revenueByCategory.length > 0 ? <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, flexWrap: 'wrap' }}>
-            <Box role="img" aria-label="Revenue distribution by category" sx={{ position: 'relative', width: 180, height: 180, flexShrink: 0, borderRadius: '50%', background: `conic-gradient(${revenueGradient})` }}>
-              <Box sx={{ position: 'absolute', inset: '29%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', backgroundColor: 'background.paper' }}>
-                <Typography variant="caption" color="text.secondary">Total</Typography>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{formatCurrency(totalCategoryRevenue)}</Typography>
-              </Box>
+        </Box>
+      </Paper>
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: 2, alignItems: 'stretch' }}>
+        <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', minWidth: 0, height: '100%', boxSizing: 'border-box' }}>
+          <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 2.25 }}>
+            <Box sx={{ display: 'grid', placeItems: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: 2, color: 'primary.main', backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.1) }}><PaymentsOutlinedIcon fontSize="small" /></Box>
+            <Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Revenue by Category</Typography><Typography variant="body2" color="text.secondary">Published course revenue distribution</Typography></Box>
+          </Stack>
+          {revenueByCategory.length ? <Stack direction={{ xs: 'column', sm: 'row' }} alignItems="center" justifyContent="center" spacing={{ xs: 2, sm: 2.5 }} sx={{ minHeight: 220 }}>
+            <Box role="img" aria-label="Revenue distribution by category" sx={{ position: 'relative', width: 172, height: 172, flexShrink: 0, borderRadius: '50%', background: `conic-gradient(${revenueGradient})` }}>
+              <Box sx={{ position: 'absolute', inset: '28%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', backgroundColor: 'background.paper', textAlign: 'center' }}><Typography variant="caption" color="text.secondary">Total revenue</Typography><Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{formatCurrency(totalRevenue)}</Typography></Box>
             </Box>
-            <Stack spacing={1} sx={{ minWidth: 170, flex: 1 }}>
-              {revenueByCategory.map(({ label, value }, index) => <Box key={label} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}><Box sx={{ width: 10, height: 10, flexShrink: 0, borderRadius: '50%', backgroundColor: categoryColors[index % categoryColors.length] }} /><Typography variant="body2" noWrap title={label}>{label}</Typography></Box>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>{formatCurrency(value)}</Typography>
+            <Stack spacing={1.2} sx={{ width: '100%', minWidth: 0, maxWidth: 300 }}>
+              {revenueByCategory.map(({ label, value }, index) => <Box key={label} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}><Box sx={{ width: 10, height: 10, flexShrink: 0, borderRadius: '50%', backgroundColor: categoryColor(label, index) }} /><Typography variant="body2" noWrap title={label}>{label}</Typography></Box>
+                <Box sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}><Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{formatCurrency(value)}</Typography><Typography variant="caption" color="text.secondary">{`${categoryRevenueTotal > 0 ? ((value / categoryRevenueTotal) * 100).toFixed(1) : '0.0'}% of total`}</Typography></Box>
               </Box>)}
             </Stack>
-          </Box> : <Typography color="text.secondary">No category revenue available yet.</Typography>}
+          </Stack> : <Box sx={{ display: 'grid', placeItems: 'center', minHeight: 220 }}><Typography color="text.secondary">No category revenue available yet.</Typography></Box>}
         </Paper>
-        <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 3.5, flex: 1, minWidth: 0 }}>
-          <Typography variant="h6">Top courses by enrollment</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Courses with the most active learners</Typography>
-          {topCourses.length > 0 ? <Stack spacing={1.75}>
-            {topCourses.map(({ label, value }) => <Box key={label}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mb: 0.5 }}><Typography variant="body2" noWrap title={label}>{label}</Typography><Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>{value}</Typography></Box>
-              <LinearProgress variant="determinate" value={maxCourseEnrollments ? (value / maxCourseEnrollments) * 100 : 0} sx={{ height: 8, borderRadius: 4 }} aria-label={`${label}: ${value} enrollments`} />
-            </Box>)}
-          </Stack> : <Typography color="text.secondary">No course enrollment data available yet.</Typography>}
+
+        <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', minWidth: 0, height: '100%', boxSizing: 'border-box' }}>
+          <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 2.25 }}>
+            <Box sx={{ display: 'grid', placeItems: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: 2, color: 'primary.main', backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.1) }}><GroupOutlinedIcon fontSize="small" /></Box>
+            <Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Course Enrollments</Typography><Typography variant="body2" color="text.secondary">Students enrolled by category</Typography></Box>
+          </Stack>
+          {enrollmentsByCategory.length ? <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ overflow: 'hidden' }}><Box component="svg" viewBox={`0 0 ${enrollmentWidth} ${enrollmentHeight}`} sx={{ display: 'block', width: '100%', height: 'auto' }} role="img" aria-label="Course enrollments by category">
+              {enrollmentTicks.map((tick) => {
+                const y = enrollmentMargins.top + enrollmentPlotHeight * (1 - tick / enrollmentAxisMax)
+                return <g key={tick}><line x1={enrollmentMargins.left} x2={enrollmentWidth - enrollmentMargins.right} y1={y} y2={y} stroke={theme.palette.divider} strokeDasharray="4 5" /><text x={enrollmentMargins.left - 8} y={y + 4} fill={theme.palette.text.secondary} fontSize="11" textAnchor="end">{formatCount(tick)}</text></g>
+              })}
+              {enrollmentsByCategory.map(({ label, value }, index) => {
+                const groupWidth = enrollmentPlotWidth / enrollmentsByCategory.length
+                const center = enrollmentMargins.left + groupWidth * (index + 0.5)
+                const barWidth = Math.min(48, groupWidth * 0.52)
+                const barHeight = (value / enrollmentAxisMax) * enrollmentPlotHeight
+                const color = categoryColor(label, index)
+                const shortLabel = label.length > (isNarrow ? 9 : 13) ? `${label.slice(0, isNarrow ? 8 : 12)}…` : label
+                return <g key={label}><rect x={center - barWidth / 2} y={enrollmentMargins.top + enrollmentPlotHeight - barHeight} width={barWidth} height={barHeight} rx="5" fill={color}><title>{`${label}: ${formatCount(value)} enrollments`}</title></rect><text x={center} y={enrollmentMargins.top + enrollmentPlotHeight - barHeight - 8} fill={theme.palette.text.primary} fontSize="12" fontWeight="700" textAnchor="middle">{formatCount(value)}</text><text x={center} y={enrollmentHeight - 24} fill={theme.palette.text.secondary} fontSize="11" textAnchor="middle"><title>{label}</title>{shortLabel}</text></g>
+              })}
+            </Box></Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, mt: 1.5, px: 1.5, py: 1.25, borderRadius: 2, backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.06) }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}><GroupOutlinedIcon fontSize="small" sx={{ color: 'primary.main' }} /><Typography variant="body2" color="text.secondary">Total enrollments</Typography></Box>
+              <Typography variant="h6" sx={{ fontWeight: 800, whiteSpace: 'nowrap' }}>{formatCount(activeStudents)}</Typography>
+            </Box>
+          </Box> : <Box sx={{ display: 'grid', placeItems: 'center', minHeight: 260 }}><Typography color="text.secondary">No course enrollment data available yet.</Typography></Box>}
         </Paper>
-      </Stack>
+      </Box>
     </Stack>
   )
 }
@@ -1001,7 +1075,7 @@ const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
       <AtRiskStudentsPanel students={atRiskStudents} loading={atRiskLoading} error={atRiskError} compact />
       <WeakAreasPanel weakAreas={overview.weakAreas} />
     </Box>
-    <DashboardCharts revenueByMonth={overview.revenueByMonth} enrollmentsByCategory={overview.enrollmentsByCategory} revenueByCategory={overview.revenueByCategory} topCourses={overview.topCourses} /></>}
+    <DashboardCharts totalRevenue={overview.totalRevenue} activeStudents={overview.activeStudents} revenueByMonth={overview.revenueByMonth} enrollmentsByCategory={overview.enrollmentsByCategory} revenueByCategory={overview.revenueByCategory} /></>}
   </>
 }
 
