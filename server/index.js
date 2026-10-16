@@ -2604,13 +2604,13 @@ app.get('/api/classes', async (_request, response) => {
       GROUP BY class_id
     ) AS enrollment_counts ON enrollment_counts.class_id = classes.id
     WHERE classes.published = true
-      AND classes.status <> 'closed'
+      AND classes.status IN ('open', 'full')
     ORDER BY classes.created_at DESC, classes.id DESC
   `
   return response.json(classes.map((classRecord) => {
     const schedule = deserializeJson(classRecord.schedule)
     return { ...classRecord, schedule, enrollmentClosed: isClassEnrollmentClosed(schedule) }
-  }))
+  }).filter((classRecord) => !classRecord.enrollmentClosed))
 })
 
 app.get('/api/tutor/overview', requireTutor, async (request, response) => {
