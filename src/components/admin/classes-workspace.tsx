@@ -453,6 +453,7 @@ const ClassDetail: FC<{ classRecord: AdminClass | undefined; enrollments: ClassE
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 3 }}>
         <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', flex: 1 }}><Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Enrollment</Typography><Typography variant="h5">{enrolled.length} / {classRecord.capacity}</Typography></Paper>
         <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', flex: 1 }}><Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Class availability</Typography><Typography variant="h6">{formatSchedule(classRecord.schedule)}</Typography></Paper>
+        {classRecord.program_id === 'ministry-exam-prep' && <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', flex: 1 }}><Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Exam date</Typography><Typography variant="h6">{classRecord.exam_date ? new Date(`${classRecord.exam_date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set'}</Typography></Paper>}
         <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', flex: 1 }}><Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Status</Typography><ClassStatusChip status={classRecord.status} /></Paper>
       </Stack>
       <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', mb: 3 }}>
