@@ -1,8 +1,11 @@
+import type { MasteryLevel } from '@/components/course/study-mastery'
+
 export interface PlannerTopic {
   lessonId: number
   title: string
   moduleTitle: string
   weakScore: number | null
+  mastery: MasteryLevel
 }
 
 export interface PlanPeriod {
@@ -29,6 +32,12 @@ export const getDaysBetween = (from: string, to: string) =>
 
 const addDays = (dateKey: string, days: number) =>
   new Date(Date.parse(`${dateKey}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10)
+
+const riskRank: Record<MasteryLevel, number> = { shaky: 0, not_started: 1, unverified: 2, strong: 3 }
+
+export const prioritizePlannerTopics = (topics: PlannerTopic[]): PlannerTopic[] => topics
+  .filter((topic) => topic.mastery !== 'strong')
+  .sort((first, second) => riskRank[first.mastery] - riskRank[second.mastery] || (first.weakScore ?? 101) - (second.weakScore ?? 101))
 
 export const buildStudyPlan = (topics: PlannerTopic[], today: string, examDate: string): StudyPlan => {
   const daysUntilExam = getDaysBetween(today, examDate)

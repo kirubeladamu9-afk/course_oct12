@@ -64,7 +64,8 @@ import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined'
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
-import { buildStudyPlan, getDaysBetween, toDateKey, type PlannerTopic } from '@/components/course/study-planner'
+import { buildStudyPlan, getDaysBetween, prioritizePlannerTopics, toDateKey, type PlannerTopic } from '@/components/course/study-planner'
+import { countMasteryLevels, getLessonMastery, MASTERY_LABELS, type MasteryAttempt, type MasteryLevel } from '@/components/course/study-mastery'
 import { type FC, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type Course } from '@/interfaces/course'
 import ScheduleCalendar, { type ScheduleSession } from '@/components/schedule-calendar'
@@ -109,6 +110,7 @@ import { calculateOverallGrade } from '@/lib/overall-grade'
   progress: number
   timeSpentSeconds: number
   quizResults: Record<number, DashboardQuizResult>
+  quizAttempts: MasteryAttempt[]
   weakAreas: WeakArea[]
   attendance: Record<number, 'Present' | 'Absent'>
   sessionJoinClicks: Record<number, string>
@@ -349,15 +351,16 @@ const mapMyEnrollments = (records: MyEnrollment[], userId: number): DashboardEnr
   const course = mapEnrollmentCourse(record)
   const classRecord = mapEnrollmentClass(record, course)
   const quizResults = getLatestQuizResults(record.quizAttempts)
+  const quizAttempts = record.quizAttempts
   const lessonById = new Map(record.modules.flatMap((module) => module.lessons).map((lesson) => [lesson.id, lesson]))
   const activityDates = [
     ...Object.values(record.lessonProgress ?? {}).map((progress) => progress.completedAt),
     ...record.quizAttempts.filter((attempt) => attempt.passed === true).map((attempt) => attempt.submittedAt ?? attempt.startedAt),
     ...Object.entries(record.attendance ?? {}).filter(([, status]) => status === 'Present').map(([lessonId]) => lessonById.get(Number(lessonId))?.scheduledAt),
   ].filter((date): date is string => Boolean(date))
-  const courseEnrollment: DashboardEnrollment = { id: record.id, user_id: userId, type: 'course', item_id: getEnrollmentContentId(record), status: 'active', progress: record.progressPercentage, timeSpentSeconds: record.timeSpentSeconds, quizResults, weakAreas: record.weakAreas ?? [], attendance: record.attendance ?? {}, sessionJoinClicks: record.sessionJoinClicks ?? {}, activityDates, course }
+  const courseEnrollment: DashboardEnrollment = { id: record.id, user_id: userId, type: 'course', item_id: getEnrollmentContentId(record), status: 'active', progress: record.progressPercentage, timeSpentSeconds: record.timeSpentSeconds, quizResults, quizAttempts, weakAreas: record.weakAreas ?? [], attendance: record.attendance ?? {}, sessionJoinClicks: record.sessionJoinClicks ?? {}, activityDates, course }
   if (!classRecord) return [courseEnrollment]
-  return [{ id: record.id, user_id: userId, type: 'class', item_id: classRecord.id, status: classRecord.status === 'pending_schedule' ? 'pending_schedule' : 'active', progress: record.progressPercentage, timeSpentSeconds: record.timeSpentSeconds, quizResults, weakAreas: record.weakAreas ?? [], attendance: record.attendance ?? {}, sessionJoinClicks: record.sessionJoinClicks ?? {}, activityDates, classRecord }]
+  return [{ id: record.id, user_id: userId, type: 'class', item_id: classRecord.id, status: classRecord.status === 'pending_schedule' ? 'pending_schedule' : 'active', progress: record.progressPercentage, timeSpentSeconds: record.timeSpentSeconds, quizResults, quizAttempts, weakAreas: record.weakAreas ?? [], attendance: record.attendance ?? {}, sessionJoinClicks: record.sessionJoinClicks ?? {}, activityDates, classRecord }]
 })
 const getCourseProgress = (course: DashboardCourse, completedLessonIds: number[]) => Math.round((completedLessonIds.filter((lessonId) => getCompletionLessons(course).some((lesson) => lesson.id === lessonId)).length / Math.max(1, getCompletionLessons(course).length)) * 100)
 const getEnrollmentCourse = (enrollment: DashboardEnrollment) => enrollment.course ?? enrollment.classRecord?.course
@@ -616,21 +619,34 @@ const readSavedStudyPlanOrder = (classId: number): number[] | null => {
   }
 }
 
-const getPlannerTopics = (course: DashboardCourse, weakAreas: WeakArea[], quizResults: Record<number, DashboardQuizResult>, completedLessonIds: number[]): PlannerTopic[] => {
-  const completed = new Set(completedLessonIds)
-  const normalize = (value: string) => value.trim().toLowerCase()
-  return course.modules
-    .flatMap((module) => module.lessons
-      .filter((lesson) => lesson.type !== 'practice' && !completed.has(lesson.id))
-      .map((lesson) => {
-        const names = [lesson.topicTitle, lesson.title].filter((name): name is string => Boolean(name)).map(normalize)
-        const topicScores = weakAreas.filter((area) => names.includes(normalize(area.topic))).map((area) => area.accuracy)
-        const quizResult = quizResults[lesson.id]
-        const scores = quizResult && !quizResult.passed ? [...topicScores, quizResult.score] : topicScores
-        return { lessonId: lesson.id, title: lesson.title, moduleTitle: module.title, weakScore: scores.length > 0 ? Math.min(...scores) : null }
-      }))
-    .sort((first, second) => (first.weakScore ?? 101) - (second.weakScore ?? 101))
+const normalizeTopicName = (value: string) => value.trim().toLowerCase()
+
+const getLinkedQuizLessonIds = (lessons: DashboardLesson[], lesson: DashboardLesson): number[] => {
+  if (lesson.type === 'quiz') return [lesson.id]
+  const names = [lesson.topicTitle, lesson.title].filter((name): name is string => Boolean(name)).map(normalizeTopicName)
+  return lessons
+    .filter((candidate) => candidate.type === 'quiz' && (candidate.quizQuestions ?? []).some((question) => question.topic !== undefined && names.includes(normalizeTopicName(question.topic))))
+    .map((candidate) => candidate.id)
 }
+
+const getPlannerTopics = (course: DashboardCourse, weakAreas: WeakArea[], quizResults: Record<number, DashboardQuizResult>, quizAttempts: MasteryAttempt[], completedLessonIds: number[]): PlannerTopic[] => {
+  const completed = new Set(completedLessonIds)
+  const lessons = getLessons(course)
+  return course.modules.flatMap((module) => module.lessons
+    .filter((lesson) => lesson.type !== 'practice')
+    .map((lesson) => {
+      const names = [lesson.topicTitle, lesson.title].filter((name): name is string => Boolean(name)).map(normalizeTopicName)
+      const topicScores = weakAreas.filter((area) => names.includes(normalizeTopicName(area.topic))).map((area) => area.accuracy)
+      const quizResult = quizResults[lesson.id]
+      const scores = quizResult && !quizResult.passed ? [...topicScores, quizResult.score] : topicScores
+      const linkedQuizIds = new Set(getLinkedQuizLessonIds(lessons, lesson))
+      const mastery = getLessonMastery({ completed: completed.has(lesson.id), quizAttempts: quizAttempts.filter((attempt) => linkedQuizIds.has(attempt.lessonId)) })
+      return { lessonId: lesson.id, title: lesson.title, moduleTitle: module.title, weakScore: scores.length > 0 ? Math.min(...scores) : null, mastery }
+    }))
+}
+
+const masteryLevels: MasteryLevel[] = ['strong', 'shaky', 'unverified', 'not_started']
+const masteryChipColors: Record<MasteryLevel, 'success' | 'warning' | 'info' | 'default'> = { strong: 'success', shaky: 'warning', unverified: 'info', not_started: 'default' }
 
 const applySavedStudyPlanOrder = (topics: PlannerTopic[], order: number[]) => {
   const topicById = new Map(topics.map((topic) => [topic.lessonId, topic]))
@@ -647,7 +663,9 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
   const today = toDateKey(now)
   const examDate = classRecord.examDate
   const daysUntilExam = examDate ? getDaysBetween(today, examDate) : 0
-  const remainingTopics = classRecord.course ? getPlannerTopics(classRecord.course, enrollment.weakAreas, enrollment.quizResults, completedLessonIds) : []
+  const allTopics = classRecord.course ? getPlannerTopics(classRecord.course, enrollment.weakAreas, enrollment.quizResults, enrollment.quizAttempts, completedLessonIds) : []
+  const remainingTopics = prioritizePlannerTopics(allTopics)
+  const masteryCounts = countMasteryLevels(allTopics.map((topic) => topic.mastery))
   const canPlan = Boolean(examDate) && daysUntilExam >= 0 && remainingTopics.length > 0
 
   const createPlan = () => {
@@ -663,15 +681,15 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
   let content: ReactNode
   if (!examDate) content = <PlannerMessage title="Your tutor hasn't set an exam date yet" description="Your study plan will appear here once an exam date is added to this class." />
   else if (daysUntilExam < 0) content = <PlannerMessage title="Your exam date has passed" description="Check with your tutor if you need a revised schedule." />
-  else if (remainingTopics.length === 0) content = <PlannerMessage title="You're all caught up — nothing left to schedule!" description="Every lesson in this class is complete." />
-  else if (savedOrder === null) content = <PlannerMessage title="Ready when you are" description={`Generate a plan to schedule your ${remainingTopics.length} remaining ${remainingTopics.length === 1 ? 'lesson' : 'lessons'} before your exam.`} />
+  else if (remainingTopics.length === 0) content = <PlannerMessage title="You're all caught up — nothing left to schedule!" description="Every lesson in this class has strong quiz results." />
+  else if (savedOrder === null) content = <PlannerMessage title="Ready when you are" description={`Generate a plan to schedule ${remainingTopics.length} ${remainingTopics.length === 1 ? 'lesson' : 'lessons'} to learn or review before your exam.`} />
   else {
     const plan = buildStudyPlan(applySavedStudyPlanOrder(remainingTopics, savedOrder), today, examDate)
     content = <Stack spacing={1.25}>
       {plan.periods.map((period) => <Box key={period.index} sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 2.5 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{plan.granularity === 'day' ? formatPlanDate(period.startDate, today) : `Week ${period.index + 1} · ${formatPlanDate(period.startDate)} – ${formatPlanDate(period.endDate)}`}</Typography>
         <Stack spacing={0.75} sx={{ mt: 1 }}>{period.topics.map((topic) => <Button key={topic.lessonId} onClick={() => onOpenCourse(classRecord.id, topic.lessonId)} sx={{ justifyContent: 'space-between', gap: 1, px: 1.25, py: 1, borderRadius: 2, textAlign: 'left', border: 1, borderColor: 'divider', color: 'text.primary' }}>
-          <Box sx={{ minWidth: 0, flex: 1 }}><Typography noWrap sx={{ fontWeight: 600 }}>{topic.title}</Typography><Typography noWrap variant="caption" color="text.secondary">{topic.moduleTitle}</Typography></Box>
+          <Box sx={{ minWidth: 0, flex: 1 }}><Typography noWrap sx={{ fontWeight: 600 }}>{topic.mastery === 'not_started' ? 'Learn' : 'Review'}: {topic.title}</Typography><Typography noWrap variant="caption" color="text.secondary">{topic.moduleTitle}</Typography></Box>
           {topic.weakScore !== null && <Chip size="small" label="Weak" color="warning" />}
         </Button>)}</Stack>
       </Box>)}
@@ -689,6 +707,7 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
         {canPlan && <Button variant={savedOrder === null ? 'contained' : 'outlined'} size="small" startIcon={savedOrder === null ? undefined : <RefreshRoundedIcon />} onClick={createPlan} sx={{ borderRadius: 2, fontWeight: 700 }}>{savedOrder === null ? 'Generate Plan' : 'Regenerate Plan'}</Button>}
       </Stack>
     </Stack>
+    {allTopics.length > 0 && <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>{masteryLevels.map((level) => <Chip key={level} size="small" variant="outlined" color={masteryChipColors[level]} label={`${MASTERY_LABELS[level]}: ${masteryCounts[level]} ${masteryCounts[level] === 1 ? 'topic' : 'topics'}`} sx={{ fontWeight: 700 }} />)}</Box>}
     {content}
   </Paper>
 }

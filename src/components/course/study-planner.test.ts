@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { buildStudyPlan, getDaysBetween, type PlannerTopic } from './study-planner'
+import { buildStudyPlan, getDaysBetween, prioritizePlannerTopics, type PlannerTopic } from './study-planner'
+import type { MasteryLevel } from './study-mastery'
 
-const topic = (lessonId: number, weakScore: number | null = null): PlannerTopic => ({ lessonId, title: `Lesson ${lessonId}`, moduleTitle: 'Module', weakScore })
+const topic = (lessonId: number, weakScore: number | null = null, mastery: MasteryLevel = 'not_started'): PlannerTopic => ({ lessonId, title: `Lesson ${lessonId}`, moduleTitle: 'Module', weakScore, mastery })
+
+describe('prioritizePlannerTopics', () => {
+  it('excludes strong topics and orders shaky, not started, then unverified', () => {
+    const topics = [topic(1, null, 'unverified'), topic(2, null, 'strong'), topic(3, null, 'not_started'), topic(4, 65, 'shaky')]
+    expect(prioritizePlannerTopics(topics).map((item) => item.lessonId)).toEqual([4, 3, 1])
+  })
+})
 
 describe('buildStudyPlan', () => {
   it('uses daily periods when the exam is within 14 days', () => {
