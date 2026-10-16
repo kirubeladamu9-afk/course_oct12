@@ -647,7 +647,7 @@ const getPlannerTopics = (course: DashboardCourse, weakAreas: WeakArea[], quizRe
 }
 
 const masteryLevels: MasteryLevel[] = ['strong', 'shaky', 'unverified', 'not_started']
-const masteryChipColors: Record<MasteryLevel, 'success' | 'warning' | 'info' | 'default'> = { strong: 'success', shaky: 'warning', unverified: 'info', not_started: 'default' }
+const masteryChipColors: Record<MasteryLevel, 'success' | 'warning' | 'info' | 'error'> = { strong: 'success', shaky: 'warning', unverified: 'info', not_started: 'error' }
 
 const applySavedStudyPlanOrder = (topics: PlannerTopic[], order: number[]) => {
   const topicById = new Map(topics.map((topic) => [topic.lessonId, topic]))
@@ -689,10 +689,16 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
     content = <Stack spacing={1.25}>
       {plan.periods.map((period) => <Box key={period.index} sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 2.5 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{plan.granularity === 'day' ? formatPlanDate(period.startDate, today) : `Week ${period.index + 1} · ${formatPlanDate(period.startDate)} – ${formatPlanDate(period.endDate)}`}</Typography>
-        <Stack spacing={0.75} sx={{ mt: 1 }}>{period.topics.map((topic) => <Button key={topic.lessonId} onClick={() => onOpenCourse(classRecord.id, topic.lessonId)} sx={{ justifyContent: 'space-between', gap: 1, px: 1.25, py: 1, borderRadius: 2, textAlign: 'left', border: 1, borderColor: 'divider', color: 'text.primary' }}>
-          <Box sx={{ minWidth: 0, flex: 1 }}><Typography noWrap sx={{ fontWeight: 600 }}>{topic.mastery === 'not_started' ? 'Learn' : 'Review'}: {topic.title}</Typography><Typography noWrap variant="caption" color="text.secondary">{topic.moduleTitle}</Typography></Box>
+        <Box sx={{ mt: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 1 }}>{period.topics.map((topic) => <Button key={topic.lessonId} onClick={() => onOpenCourse(classRecord.id, topic.lessonId)} sx={{ justifyContent: 'space-between', alignItems: 'center', minWidth: 0, gap: 1, px: 1.25, py: 1, borderRadius: 2, textAlign: 'left', border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: `${masteryChipColors[topic.mastery]}.main`, backgroundColor: (theme) => alpha(theme.palette[masteryChipColors[topic.mastery]].main, 0.06), color: 'text.primary' }}>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+              <Chip size="small" label={MASTERY_LABELS[topic.mastery].toUpperCase()} color={masteryChipColors[topic.mastery]} sx={{ height: 20, fontSize: 11, fontWeight: 800, flexShrink: 0 }} />
+              <Typography noWrap sx={{ fontWeight: 600, minWidth: 0 }}>{topic.mastery === 'not_started' ? 'Learn' : 'Review'}: {topic.title}</Typography>
+            </Stack>
+            <Typography noWrap variant="caption" color="text.secondary">{topic.moduleTitle}</Typography>
+          </Box>
           {topic.weakScore !== null && <Chip size="small" label="Weak" color="warning" />}
-        </Button>)}</Stack>
+        </Button>)}</Box>
       </Box>)}
     </Stack>
   }
