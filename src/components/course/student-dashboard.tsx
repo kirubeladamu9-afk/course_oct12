@@ -86,7 +86,7 @@ import { navigateTo } from '@/lib/navigation'
 import { SITE_NAME } from '@/lib/site'
 import { calculateOverallGrade } from '@/lib/overall-grade'
 
- type DashboardView = 'overview' | 'calendar' | 'courses' | 'classes' | 'quizzes' | 'purchases' | 'other-courses' | 'other-classes' | 'profile' | 'payments' | 'course-view'
+ type DashboardView = 'overview' | 'calendar' | 'courses' | 'classes' | 'study-planner' | 'quizzes' | 'purchases' | 'other-courses' | 'other-classes' | 'profile' | 'payments' | 'course-view'
  type EnrollmentType = 'course' | 'class'
  type EnrollmentStatus = 'active' | 'pending_schedule' | 'completed'
  type ClassStatus = 'pending_schedule' | 'open' | 'full' | 'closed'
@@ -450,7 +450,7 @@ interface SidebarProps {
 }
 
 const DashboardSidebar: FC<SidebarProps> = ({ activeView, onSelectView }) => {
-  const enrollmentActive = activeView === 'courses' || activeView === 'classes' || activeView === 'course-view'
+  const enrollmentActive = activeView === 'courses' || activeView === 'classes' || activeView === 'study-planner' || activeView === 'course-view'
   const [isEnrollmentExpanded, setIsEnrollmentExpanded] = useState(enrollmentActive)
 
   useEffect(() => {
@@ -476,6 +476,7 @@ const DashboardSidebar: FC<SidebarProps> = ({ activeView, onSelectView }) => {
         {isEnrollmentExpanded && <Box sx={{ ml: 2, mb: 1 }}>
           <Box component="button" type="button" onClick={() => onSelectView('courses')} sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1, border: 0, borderLeft: 2, borderColor: activeView === 'courses' || activeView === 'course-view' ? 'primary.main' : 'divider', py: 0.75, pl: 1.5, pr: 1, backgroundColor: 'transparent', color: activeView === 'courses' || activeView === 'course-view' ? 'primary.main' : 'text.secondary', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: activeView === 'courses' || activeView === 'course-view' ? 600 : 400, textAlign: 'left' }}><MenuBookOutlinedIcon fontSize="small" />My Courses</Box>
           <Box component="button" type="button" onClick={() => onSelectView('classes')} sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1, border: 0, borderLeft: 2, borderColor: activeView === 'classes' ? 'primary.main' : 'divider', py: 0.75, pl: 1.5, pr: 1, backgroundColor: 'transparent', color: activeView === 'classes' ? 'primary.main' : 'text.secondary', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: activeView === 'classes' ? 600 : 400, textAlign: 'left' }}><ClassOutlinedIcon fontSize="small" />My Classes</Box>
+          <Box component="button" type="button" onClick={() => onSelectView('study-planner')} sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1, border: 0, borderLeft: 2, borderColor: activeView === 'study-planner' ? 'primary.main' : 'divider', py: 0.75, pl: 1.5, pr: 1, backgroundColor: 'transparent', color: activeView === 'study-planner' ? 'primary.main' : 'text.secondary', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: activeView === 'study-planner' ? 600 : 400, textAlign: 'left' }}><CalendarTodayOutlinedIcon fontSize="small" />Study Planner</Box>
         </Box>}
       </Box>
       <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mt: 2.25, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Learning</Typography>
@@ -712,6 +713,17 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
   </Paper>
 }
 
+const StudyPlannerView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; now: Date; onOpenCourse: (courseId: number, lessonId?: number) => void }> = ({ enrollments, completedLessons, now, onOpenCourse }) => {
+  const studyPlanners = enrollments.flatMap((enrollment) => {
+    const classRecord = enrollment.classRecord
+    return enrollment.type === 'class' && classRecord?.programId === 'ministry-exam-prep' ? [{ enrollment, classRecord }] : []
+  })
+  if (studyPlanners.length === 0) return <PlannerMessage title="No study planner yet" description="Study planners appear here for your enrolled Ministry Exam Prep classes." />
+  return <Stack spacing={2.5}>
+    {studyPlanners.map(({ enrollment, classRecord }) => <StudyPlannerPanel key={classRecord.id} classRecord={classRecord} enrollment={enrollment} completedLessonIds={completedLessons[enrollment.item_id] ?? []} now={now} onOpenCourse={onOpenCourse} />)}
+  </Stack>
+}
+
 const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; now: Date; onSelectView: (view: DashboardView) => void; onOpenCourse: (courseId: number, lessonId?: number) => void; gamificationData: GamificationData }> = ({ enrollments, completedLessons, now, onSelectView, onOpenCourse, gamificationData }) => {
   const courseEnrollments = enrollments.filter((enrollment) => enrollment.type === 'course' && enrollment.status !== 'completed')
   const courses = courseEnrollments.flatMap((enrollment) => enrollment.course ? [{
@@ -745,10 +757,6 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: R
         .map((lesson) => ({ lesson, classRecord }))
     })
     .sort((first, second) => new Date(first.lesson.scheduledAt!).getTime() - new Date(second.lesson.scheduledAt!).getTime())[0]
-  const studyPlanners = enrollments.flatMap((enrollment) => {
-    const classRecord = enrollment.classRecord
-    return enrollment.type === 'class' && classRecord?.programId === 'ministry-exam-prep' ? [{ enrollment, classRecord }] : []
-  })
   const displayName = getAuthenticatedUser()?.name?.split(' ')[0] || 'Learner'
   return <StudentDashboardOverview
     displayName={displayName}
@@ -762,7 +770,6 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: R
     onOpenCourse={(courseId) => onOpenCourse(courseId)}
     onSelectView={onSelectView}
   >
-    {studyPlanners.map(({ enrollment, classRecord }) => <StudyPlannerPanel key={classRecord.id} classRecord={classRecord} enrollment={enrollment} completedLessonIds={completedLessons[enrollment.item_id] ?? []} now={now} onOpenCourse={onOpenCourse} />)}
     <WeakAreasPanel enrollments={enrollments} onOpenCourse={onOpenCourse} />
     <GamificationWidgets data={gamificationData} />
     {pendingCount > 0 && <Alert severity="info" icon={<CalendarTodayOutlinedIcon />} action={<Button color="inherit" size="small" onClick={() => onSelectView('classes')}>View classes</Button>} sx={{ mt: 2.25, borderRadius: 3 }}>You have {pendingCount} class {pendingCount === 1 ? 'enrollment' : 'enrollments'} awaiting scheduling.</Alert>}
@@ -1796,7 +1803,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   const selectedCourseProgress = selectedCourse ? getCourseProgress(selectedCourse, completedLessons[selectedCourse.id] ?? []) : 0
   const enrolledCourseIds = new Set(enrollments.filter((enrollment) => enrollment.type === 'course').map((enrollment) => String(enrollment.item_id)))
   const enrolledClassIds = new Set(enrollments.filter((enrollment) => enrollment.type === 'class').map((enrollment) => enrollment.item_id))
-  const pageTitle = activeView === 'course-view' ? selectedCourse?.title ?? 'Course view' : activeView === 'overview' ? 'Dashboard' : activeView === 'calendar' ? 'Calendar' : activeView === 'courses' ? 'My Courses' : activeView === 'classes' ? 'My Classes' : activeView === 'quizzes' ? 'Quizzes & Results' : activeView === 'purchases' ? 'My Purchases' : activeView === 'other-courses' ? 'Other Courses' : activeView === 'other-classes' ? 'Other Classes' : activeView === 'profile' ? 'Profile' : 'Payment History'
+  const pageTitle = activeView === 'course-view' ? selectedCourse?.title ?? 'Course view' : activeView === 'overview' ? 'Dashboard' : activeView === 'calendar' ? 'Calendar' : activeView === 'courses' ? 'My Courses' : activeView === 'classes' ? 'My Classes' : activeView === 'study-planner' ? 'Study Planner' : activeView === 'quizzes' ? 'Quizzes & Results' : activeView === 'purchases' ? 'My Purchases' : activeView === 'other-courses' ? 'Other Courses' : activeView === 'other-classes' ? 'Other Classes' : activeView === 'profile' ? 'Profile' : 'Payment History'
 
   useEffect(() => {
     const title = quizActive ? (readOnlyQuizResult ? 'Quiz Results' : 'Quiz') : pageTitle
@@ -1945,6 +1952,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
           {activeView === 'calendar' && <StudentCalendarView enrollments={enrollments} now={now} onJoin={(session) => { if (session.lessonId && session.meetingUrl) void joinLiveSession(session.lessonId, session.meetingUrl, session.enrollmentId) }} />}
           {activeView === 'courses' && <CoursesView enrollments={enrollments} completedLessons={completedLessons} onOpenCourse={openCourse} />}
           {activeView === 'classes' && <ClassesView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} gamificationData={gamificationData} />}
+          {activeView === 'study-planner' && <StudyPlannerView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} />}
           {activeView === 'quizzes' && <QuizzesView enrollments={enrollments} completedLessons={completedLessons} quizResults={quizResults} now={now} onOpenCourse={openCourse} />}
           {activeView === 'purchases' && <PurchasesView />}
           {activeView === 'other-courses' && <OtherCoursesView courses={otherCourses} enrolledCourseIds={enrolledCourseIds} isLoading={isLoadingOtherCourses} error={otherCoursesError} />}
