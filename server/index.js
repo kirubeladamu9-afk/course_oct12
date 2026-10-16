@@ -437,6 +437,14 @@ const initializeDatabase = async () => {
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS quiz_attempts_one_open_attempt_idx ON quiz_attempts(enrollment_id, lesson_id) WHERE submitted_at IS NULL`
 
   await sql`
+    CREATE TABLE IF NOT EXISTS study_plans (
+      enrollment_id BIGINT PRIMARY KEY REFERENCES enrollments(id) ON DELETE CASCADE,
+      lesson_order JSONB NOT NULL DEFAULT '[]'::jsonb,
+      generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
+
+  await sql`
     CREATE TABLE IF NOT EXISTS gamification_activity_rewards (
       id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1046,6 +1054,7 @@ const serializeEnrollment = (enrollment) => {
     timeSpentSeconds: Number(enrollment.timeSpentSeconds) || 0,
     attendance: deserializeJson(enrollment.attendance) ?? {},
     progressPercentage,
+    studyPlanOrder: deserializeJson(enrollment.studyPlanOrder) ?? null,
   }
 }
 
@@ -1694,7 +1703,9 @@ app.get('/api/enrollments', requireAuthenticated, async (request, response) => {
            quiz_summary."quizAttempts",
            practice_summary."practiceAnswers",
            attendance_summary.attendance,
-           session_join_summary."sessionJoinClicks"
+           session_join_summary."sessionJoinClicks",
+           study_plan_summary."studyPlanOrder",
+           study_plan_summary."studyPlanGeneratedAt"
     FROM enrollments
     INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
     LEFT JOIN courses ON courses.id = enrollments.course_id
@@ -1752,6 +1763,11 @@ app.get('/api/enrollments', requireAuthenticated, async (request, response) => {
       FROM class_session_join_logs
       WHERE enrollment_id = enrollments.id
     ) AS session_join_summary ON true
+    LEFT JOIN LATERAL (
+      SELECT lesson_order AS "studyPlanOrder", generated_at AS "studyPlanGeneratedAt"
+      FROM study_plans
+      WHERE enrollment_id = enrollments.id
+    ) AS study_plan_summary ON true
     WHERE enrollments.user_id = ${request.userId}
       AND ((enrollments.class_status IS NULL AND enrollments.course_id IS NOT NULL) OR classes.published = true)
     ORDER BY lesson_summary."lastActivityAt" DESC NULLS LAST, enrollments.created_at DESC
@@ -1892,6 +1908,34 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/complete', requireAut
   if (!completion) return response.status(404).json({ message: 'Course enrollment not found.' })
   if (completion.error) return response.status(400).json({ message: completion.error })
   return response.json(completion.lessonProgress)
+})
+
+app.put('/api/enrollments/:enrollmentId/study-plan', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonIds = request.body?.lessonIds
+  if (enrollmentId === null || !Array.isArray(lessonIds) || lessonIds.length > 1000 || !lessonIds.every((id) => Number.isSafeInteger(id) && id > 0) || new Set(lessonIds).size !== lessonIds.length) {
+    return response.status(400).json({ message: 'Invalid study plan.' })
+  }
+
+  const result = await sql.begin(async (transaction) => {
+    const enrollment = await getOwnedEnrollment(transaction, request.userId, enrollmentId)
+    if (!enrollment || enrollment.classId === null) return { status: 404, message: 'Class enrollment not found.' }
+    const planLessonIds = new Set(getCourseLessons(deserializeJson(enrollment.modules)).filter((lesson) => lesson?.type !== 'practice').map((lesson) => lesson.id))
+    if (!lessonIds.every((id) => planLessonIds.has(id))) return { status: 400, message: 'Study plan includes lessons outside this class.' }
+
+    const [plan] = await transaction`
+      INSERT INTO study_plans (enrollment_id, lesson_order, generated_at)
+      VALUES (${enrollmentId}, ${JSON.stringify(lessonIds)}::jsonb, NOW())
+      ON CONFLICT (enrollment_id) DO UPDATE
+      SET lesson_order = EXCLUDED.lesson_order,
+          generated_at = EXCLUDED.generated_at
+      RETURNING lesson_order AS "lessonOrder", generated_at AS "generatedAt"
+    `
+    return { status: 200, plan }
+  })
+
+  if (result.status !== 200) return response.status(result.status).json({ message: result.message })
+  return response.json({ lessonOrder: deserializeJson(result.plan.lessonOrder), generatedAt: result.plan.generatedAt })
 })
 
 app.post('/api/enrollments/:enrollmentId/live-sessions/:lessonId/join', requireAuthenticated, async (request, response) => {

@@ -83,7 +83,7 @@ import { Logo } from '@/components/logo'
 import EnrollmentModal from './enrollment-modal'
 import AdminDataTable, { type DataColumn } from '@/components/admin/admin-data-table'
 import { toast } from '@/components/toast'
-import { beginQuizAttempt, completeLesson as completeLessonApi, getAuthenticatedUser, getBookstorePurchases, getCourses, getGamification, getMyEnrollments, getMyPayments, getPracticeExam, getPracticePurchases, getPublicClasses, logLiveSessionJoin, recordPracticeLessonAnswer, saveAuthenticatedUser, saveLessonEngagement, saveQuizAnswer, saveQuizViolation, submitQuizAttempt, signOut, updateAuthenticatedProfile, type BookstorePurchase, type GamificationData, type MyEnrollment, type MyPayment, type PublicClass, type QuizAnswerRecord, type QuizAnswerStatus, type QuizAttempt, type QuizQuestionResult, type QuizViolation, type QuizViolationType, type WeakArea } from '@/services/api'
+import { beginQuizAttempt, completeLesson as completeLessonApi, getAuthenticatedUser, getBookstorePurchases, getCourses, getGamification, getMyEnrollments, getMyPayments, getPracticeExam, getPracticePurchases, getPublicClasses, logLiveSessionJoin, recordPracticeLessonAnswer, saveAuthenticatedUser, saveLessonEngagement, saveQuizAnswer, saveQuizViolation, saveStudyPlan, submitQuizAttempt, signOut, updateAuthenticatedProfile, type BookstorePurchase, type GamificationData, type MyEnrollment, type MyPayment, type PublicClass, type QuizAnswerRecord, type QuizAnswerStatus, type QuizAttempt, type QuizQuestionResult, type QuizViolation, type QuizViolationType, type WeakArea } from '@/services/api'
 import { navigateTo } from '@/lib/navigation'
 import { SITE_NAME } from '@/lib/site'
 import { calculateOverallGrade } from '@/lib/overall-grade'
@@ -117,6 +117,7 @@ import { calculateOverallGrade } from '@/lib/overall-grade'
   attendance: Record<number, 'Present' | 'Absent'>
   sessionJoinClicks: Record<number, string>
   activityDates: string[]
+  studyPlanOrder: number[] | null
   course?: DashboardCourse
   classRecord?: DashboardClass
  }
@@ -360,9 +361,9 @@ const mapMyEnrollments = (records: MyEnrollment[], userId: number): DashboardEnr
     ...record.quizAttempts.filter((attempt) => attempt.passed === true).map((attempt) => attempt.submittedAt ?? attempt.startedAt),
     ...Object.entries(record.attendance ?? {}).filter(([, status]) => status === 'Present').map(([lessonId]) => lessonById.get(Number(lessonId))?.scheduledAt),
   ].filter((date): date is string => Boolean(date))
-  const courseEnrollment: DashboardEnrollment = { id: record.id, user_id: userId, type: 'course', item_id: getEnrollmentContentId(record), status: 'active', progress: record.progressPercentage, timeSpentSeconds: record.timeSpentSeconds, quizResults, quizAttempts, weakAreas: record.weakAreas ?? [], attendance: record.attendance ?? {}, sessionJoinClicks: record.sessionJoinClicks ?? {}, activityDates, course }
+  const courseEnrollment: DashboardEnrollment = { id: record.id, user_id: userId, type: 'course', item_id: getEnrollmentContentId(record), status: 'active', progress: record.progressPercentage, timeSpentSeconds: record.timeSpentSeconds, quizResults, quizAttempts, weakAreas: record.weakAreas ?? [], attendance: record.attendance ?? {}, sessionJoinClicks: record.sessionJoinClicks ?? {}, activityDates, studyPlanOrder: null, course }
   if (!classRecord) return [courseEnrollment]
-  return [{ id: record.id, user_id: userId, type: 'class', item_id: classRecord.id, status: classRecord.status === 'pending_schedule' ? 'pending_schedule' : 'active', progress: record.progressPercentage, timeSpentSeconds: record.timeSpentSeconds, quizResults, quizAttempts, weakAreas: record.weakAreas ?? [], attendance: record.attendance ?? {}, sessionJoinClicks: record.sessionJoinClicks ?? {}, activityDates, classRecord }]
+  return [{ id: record.id, user_id: userId, type: 'class', item_id: classRecord.id, status: classRecord.status === 'pending_schedule' ? 'pending_schedule' : 'active', progress: record.progressPercentage, timeSpentSeconds: record.timeSpentSeconds, quizResults, quizAttempts, weakAreas: record.weakAreas ?? [], attendance: record.attendance ?? {}, sessionJoinClicks: record.sessionJoinClicks ?? {}, activityDates, studyPlanOrder: record.studyPlanOrder ?? null, classRecord }]
 })
 const getCourseProgress = (course: DashboardCourse, completedLessonIds: number[]) => Math.round((completedLessonIds.filter((lessonId) => getCompletionLessons(course).some((lesson) => lesson.id === lessonId)).length / Math.max(1, getCompletionLessons(course).length)) * 100)
 const getEnrollmentCourse = (enrollment: DashboardEnrollment) => enrollment.course ?? enrollment.classRecord?.course
@@ -611,11 +612,11 @@ const WeakAreasPanel: FC<{ enrollments: Array<Pick<DashboardEnrollment, 'id' | '
   </Paper>
 }
 
-const studyPlanStorageKey = (classId: number) => `study-plan:${classId}`
+const legacyStudyPlanStorageKey = (classId: number) => `study-plan:${classId}`
 
-const readSavedStudyPlanOrder = (classId: number): number[] | null => {
+const readLegacyStudyPlanOrder = (classId: number): number[] | null => {
   try {
-    const saved: unknown = JSON.parse(window.localStorage.getItem(studyPlanStorageKey(classId)) ?? 'null')
+    const saved: unknown = JSON.parse(window.localStorage.getItem(legacyStudyPlanStorageKey(classId)) ?? 'null')
     return Array.isArray(saved) && saved.every((value) => Number.isInteger(value)) ? saved : null
   } catch {
     return null
@@ -667,9 +668,12 @@ const formatPlanDate = (dateKey: string, today?: string) => dateKey === today ? 
 
 const PlannerMessage: FC<{ title: string; description: string }> = ({ title, description }) => <Stack alignItems="center" textAlign="center" spacing={0.5} sx={{ py: 3, px: 2 }}><Typography sx={{ fontWeight: 700 }}>{title}</Typography><Typography variant="body2" color="text.secondary">{description}</Typography></Stack>
 
-const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: DashboardEnrollment; completedLessonIds: number[]; now: Date; onOpenCourse: (courseId: number, lessonId?: number) => void }> = ({ classRecord, enrollment, completedLessonIds, now, onOpenCourse }) => {
-  const [savedOrder, setSavedOrder] = useState<number[] | null>(() => readSavedStudyPlanOrder(classRecord.id))
+const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: DashboardEnrollment; completedLessonIds: number[]; now: Date; onOpenCourse: (courseId: number, lessonId?: number) => void; onStudyPlanSaved: (enrollmentId: number, lessonOrder: number[]) => void }> = ({ classRecord, enrollment, completedLessonIds, now, onOpenCourse, onStudyPlanSaved }) => {
+  const savedOrder = enrollment.studyPlanOrder
   const [isMasteryHelpOpen, setIsMasteryHelpOpen] = useState(false)
+  const [isSavingPlan, setIsSavingPlan] = useState(false)
+  const [planSaveError, setPlanSaveError] = useState<string | null>(null)
+  const legacyMigrationStarted = useRef(false)
   const today = toDateKey(now)
   const examDate = classRecord.examDate
   const daysUntilExam = examDate ? getDaysBetween(today, examDate) : 0
@@ -678,14 +682,29 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
   const masteryCounts = countMasteryLevels(allTopics.map((topic) => topic.mastery))
   const canPlan = Boolean(examDate) && daysUntilExam >= 0 && remainingTopics.length > 0
 
-  const createPlan = () => {
-    const order = remainingTopics.map((topic) => topic.lessonId)
+  useEffect(() => {
+    const legacyOrder = savedOrder === null && !legacyMigrationStarted.current ? readLegacyStudyPlanOrder(classRecord.id) : null
+    if (!legacyOrder) return
+    legacyMigrationStarted.current = true
+    saveStudyPlan(enrollment.id, legacyOrder)
+      .then(({ lessonOrder }) => {
+        window.localStorage.removeItem(legacyStudyPlanStorageKey(classRecord.id))
+        onStudyPlanSaved(enrollment.id, lessonOrder)
+      })
+      .catch(() => undefined)
+  }, [classRecord.id, enrollment.id, savedOrder, onStudyPlanSaved])
+
+  const createPlan = async () => {
+    setIsSavingPlan(true)
+    setPlanSaveError(null)
     try {
-      window.localStorage.setItem(studyPlanStorageKey(classRecord.id), JSON.stringify(order))
-    } catch {
-      // Storage can be unavailable; the plan still works for this visit.
+      const { lessonOrder } = await saveStudyPlan(enrollment.id, remainingTopics.map((topic) => topic.lessonId))
+      onStudyPlanSaved(enrollment.id, lessonOrder)
+    } catch (error) {
+      setPlanSaveError(error instanceof Error ? error.message : 'Unable to save your study plan.')
+    } finally {
+      setIsSavingPlan(false)
     }
-    setSavedOrder(order)
   }
 
   let content: ReactNode
@@ -720,7 +739,7 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
       </Stack>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
         {examDate && daysUntilExam >= 0 && <Chip label={daysUntilExam === 0 ? 'Your exam is today' : `${daysUntilExam} ${daysUntilExam === 1 ? 'day' : 'days'} until your exam`} color="primary" variant="outlined" sx={{ fontWeight: 700 }} />}
-        {canPlan && <Button variant={savedOrder === null ? 'contained' : 'outlined'} size="small" startIcon={savedOrder === null ? undefined : <RefreshRoundedIcon />} onClick={createPlan} sx={{ borderRadius: 2, fontWeight: 700 }}>{savedOrder === null ? 'Generate Plan' : 'Regenerate Plan'}</Button>}
+        {canPlan && <Button variant={savedOrder === null ? 'contained' : 'outlined'} size="small" disabled={isSavingPlan} startIcon={savedOrder === null ? undefined : <RefreshRoundedIcon />} onClick={createPlan} sx={{ borderRadius: 2, fontWeight: 700 }}>{savedOrder === null ? 'Generate Plan' : 'Regenerate Plan'}</Button>}
       </Stack>
     </Stack>
     {allTopics.length > 0 && <Stack direction="row" alignItems="center" sx={{ flexWrap: 'wrap', gap: 1, mb: 2 }}>
@@ -729,6 +748,7 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
         <IconButton size="small" aria-label="What do the mastery labels mean?" onClick={() => setIsMasteryHelpOpen((open) => !open)} sx={{ color: 'text.secondary' }}><InfoOutlinedIcon fontSize="small" /></IconButton>
       </Tooltip>
     </Stack>}
+    {planSaveError && <Alert severity="error" sx={{ mb: 2 }}>{planSaveError}</Alert>}
     {content}
   </Paper>
 }
@@ -757,14 +777,14 @@ const ExamReadinessCard: FC<{ classRecord: DashboardClass; readiness: ExamReadin
   </Paper>
 }
 
-const StudyPlannerView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; now: Date; onOpenCourse: (courseId: number, lessonId?: number) => void }> = ({ enrollments, completedLessons, now, onOpenCourse }) => {
+const StudyPlannerView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; now: Date; onOpenCourse: (courseId: number, lessonId?: number) => void; onStudyPlanSaved: (enrollmentId: number, lessonOrder: number[]) => void }> = ({ enrollments, completedLessons, now, onOpenCourse, onStudyPlanSaved }) => {
   const studyPlanners = enrollments.flatMap((enrollment) => {
     const classRecord = enrollment.classRecord
     return enrollment.type === 'class' && classRecord?.programId === 'ministry-exam-prep' ? [{ enrollment, classRecord }] : []
   })
   if (studyPlanners.length === 0) return <PlannerMessage title="No study planner yet" description="Study planners appear here for your enrolled Ministry Exam Prep classes." />
   return <Stack spacing={2.5}>
-    {studyPlanners.map(({ enrollment, classRecord }) => <StudyPlannerPanel key={classRecord.id} classRecord={classRecord} enrollment={enrollment} completedLessonIds={completedLessons[enrollment.item_id] ?? []} now={now} onOpenCourse={onOpenCourse} />)}
+    {studyPlanners.map(({ enrollment, classRecord }) => <StudyPlannerPanel key={classRecord.id} classRecord={classRecord} enrollment={enrollment} completedLessonIds={completedLessons[enrollment.item_id] ?? []} now={now} onOpenCourse={onOpenCourse} onStudyPlanSaved={onStudyPlanSaved} />)}
   </Stack>
 }
 
@@ -2009,7 +2029,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
           {activeView === 'calendar' && <StudentCalendarView enrollments={enrollments} now={now} onJoin={(session) => { if (session.lessonId && session.meetingUrl) void joinLiveSession(session.lessonId, session.meetingUrl, session.enrollmentId) }} />}
           {activeView === 'courses' && <CoursesView enrollments={enrollments} completedLessons={completedLessons} onOpenCourse={openCourse} />}
           {activeView === 'classes' && <ClassesView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} gamificationData={gamificationData} />}
-          {activeView === 'study-planner' && <StudyPlannerView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} />}
+          {activeView === 'study-planner' && <StudyPlannerView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} onStudyPlanSaved={(enrollmentId, lessonOrder) => setEnrollments((current) => current.map((enrollment) => enrollment.id === enrollmentId ? { ...enrollment, studyPlanOrder: lessonOrder } : enrollment))} />}
           {activeView === 'quizzes' && <QuizzesView enrollments={enrollments} completedLessons={completedLessons} quizResults={quizResults} now={now} onOpenCourse={openCourse} />}
           {activeView === 'purchases' && <PurchasesView />}
           {activeView === 'other-courses' && <OtherCoursesView courses={otherCourses} enrolledCourseIds={enrolledCourseIds} isLoading={isLoadingOtherCourses} error={otherCoursesError} />}

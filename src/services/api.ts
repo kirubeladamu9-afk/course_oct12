@@ -157,6 +157,8 @@ export interface MyEnrollment {
   timeSpentSeconds: number
   progressPercentage: number
   lastActivityAt: string | null
+  studyPlanOrder: number[] | null
+  studyPlanGeneratedAt: string | null
 }
 
 export interface GamificationStats {
@@ -1070,6 +1072,15 @@ export const getMyEnrollments = async (): Promise<MyEnrollment[]> => {
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
 }
+
+export const saveStudyPlan = (enrollmentId: number, lessonIds: number[]) => requestApi(`/api/enrollments/${enrollmentId}/study-plan`, {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ lessonIds }),
+}).then(async (response) => {
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json() as Promise<{ lessonOrder: number[]; generatedAt: string }>
+})
 
 export const getGamification = async (): Promise<GamificationData> => {
   const response = await requestApi('/api/gamification')
