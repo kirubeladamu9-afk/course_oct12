@@ -67,6 +67,7 @@ import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
 import { buildStudyPlan, getDaysBetween, prioritizePlannerTopics, toDateKey, type PlannerTopic } from '@/components/course/study-planner'
 import { countMasteryLevels, getLessonMastery, MASTERY_LABELS, type MasteryAttempt, type MasteryLevel } from '@/components/course/study-mastery'
+import { getExamReadiness, READINESS_TIER_LABELS, type ExamReadiness, type ReadinessTier } from '@/components/course/exam-readiness'
 import { type FC, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type Course } from '@/interfaces/course'
 import ScheduleCalendar, { type ScheduleSession } from '@/components/schedule-calendar'
@@ -732,6 +733,30 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
   </Paper>
 }
 
+const readinessTierColors: Record<ReadinessTier, 'success' | 'warning' | 'error'> = { on_track: 'success', needs_work: 'warning', at_risk: 'error' }
+
+const ExamReadinessCard: FC<{ classRecord: DashboardClass; readiness: ExamReadiness; daysUntilExam: number; onViewStudyPlan: () => void }> = ({ classRecord, readiness, daysUntilExam, onViewStudyPlan }) => {
+  const color = readinessTierColors[readiness.tier]
+  const breakdown = masteryLevels.map((level) => `${readiness.counts[level]} ${MASTERY_LABELS[level]}`).join(' · ')
+  return <Paper elevation={0} sx={{ p: { xs: 2, md: 2.5 }, border: 1, borderColor: `${color}.main`, borderLeft: 4, borderRadius: 3.5 }}>
+    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1.5}>
+      <Box sx={{ minWidth: 0 }}>
+        <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 800, letterSpacing: 1.2, lineHeight: 1.5 }}>Exam readiness · {classRecord.title}</Typography>
+        <Stack direction="row" spacing={1.25} alignItems="center" sx={{ flexWrap: 'wrap', mt: 0.5 }}>
+          <Chip label={READINESS_TIER_LABELS[readiness.tier]} color={color} sx={{ fontWeight: 800 }} />
+          <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-.03em' }}>Estimated readiness: {readiness.percentage}%</Typography>
+        </Stack>
+      </Box>
+      <Stack spacing={0.5} alignItems={{ xs: 'flex-start', sm: 'flex-end' }} sx={{ flexShrink: 0 }}>
+        <Typography variant="body2" color="text.secondary">{daysUntilExam === 0 ? 'Your exam is today' : `${daysUntilExam} ${daysUntilExam === 1 ? 'day' : 'days'} until your exam`}</Typography>
+        <Button variant="outlined" endIcon={<ArrowForwardRoundedIcon />} onClick={onViewStudyPlan} sx={{ borderRadius: 2.5 }}>View Study Plan</Button>
+      </Stack>
+    </Stack>
+    <Typography variant="body2" sx={{ mt: 1.75, fontWeight: 600 }}>{breakdown}</Typography>
+    <Typography variant="caption" color="text.secondary">Estimated based on your quiz scores and topics covered so far</Typography>
+  </Paper>
+}
+
 const StudyPlannerView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; now: Date; onOpenCourse: (courseId: number, lessonId?: number) => void }> = ({ enrollments, completedLessons, now, onOpenCourse }) => {
   const studyPlanners = enrollments.flatMap((enrollment) => {
     const classRecord = enrollment.classRecord
@@ -776,6 +801,16 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: R
         .map((lesson) => ({ lesson, classRecord }))
     })
     .sort((first, second) => new Date(first.lesson.scheduledAt!).getTime() - new Date(second.lesson.scheduledAt!).getTime())[0]
+  const today = toDateKey(now)
+  const readinessCards = enrollments.flatMap((enrollment) => {
+    const classRecord = enrollment.classRecord
+    if (enrollment.type !== 'class' || classRecord?.programId !== 'ministry-exam-prep' || !classRecord.examDate || !classRecord.course) return []
+    const daysUntilExam = getDaysBetween(today, classRecord.examDate)
+    if (daysUntilExam < 0) return []
+    const topics = getPlannerTopics(classRecord.course, enrollment.weakAreas, enrollment.quizResults, enrollment.quizAttempts, completedLessons[enrollment.item_id] ?? [])
+    const readiness = getExamReadiness(topics.map((topic) => topic.mastery), daysUntilExam)
+    return readiness ? [{ classRecord, readiness, daysUntilExam }] : []
+  })
   const displayName = getAuthenticatedUser()?.name?.split(' ')[0] || 'Learner'
   return <StudentDashboardOverview
     displayName={displayName}
@@ -786,6 +821,9 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: R
     quizAverageNeedsAttention={quizAverageNeedsAttention}
     learningStreak={gamificationData.stats.current_streak}
     session={nextSession ? { title: nextSession.lesson.title, courseTitle: nextSession.classRecord.course?.title ?? nextSession.classRecord.title, startsAt: nextSession.lesson.scheduledAt! } : undefined}
+    readiness={readinessCards.length > 0 ? <Stack spacing={2.25} sx={{ mb: 2.25 }}>
+      {readinessCards.map(({ classRecord, readiness, daysUntilExam }) => <ExamReadinessCard key={classRecord.id} classRecord={classRecord} readiness={readiness} daysUntilExam={daysUntilExam} onViewStudyPlan={() => onSelectView('study-planner')} />)}
+    </Stack> : undefined}
     onOpenCourse={(courseId) => onOpenCourse(courseId)}
     onSelectView={onSelectView}
   >

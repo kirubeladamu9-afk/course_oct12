@@ -62,12 +62,13 @@ interface StudentDashboardOverviewProps {
   quizAverageNeedsAttention: boolean
   learningStreak: number
   session?: OverviewSession
+  readiness?: ReactNode
   onOpenCourse: (courseId: number) => void
   onSelectView: (view: 'calendar' | 'courses' | 'classes') => void
   children: ReactNode
 }
 
-const StudentDashboardOverview = ({ displayName, courses, lessonCount, averageQuizScore, quizCount, quizAverageNeedsAttention, learningStreak, session, onOpenCourse, onSelectView, children }: StudentDashboardOverviewProps) => {
+const StudentDashboardOverview = ({ displayName, courses, lessonCount, averageQuizScore, quizCount, quizAverageNeedsAttention, learningStreak, session, readiness, onOpenCourse, onSelectView, children }: StudentDashboardOverviewProps) => {
   const featuredCourse = courses[0]
 
   return <Box sx={{ maxWidth: 1260, mx: 'auto', pb: 2 }}>
@@ -129,6 +130,8 @@ const StudentDashboardOverview = ({ displayName, courses, lessonCount, averageQu
       <OverviewMetric label="Quiz average" value={averageQuizScore === null ? '—' : `${averageQuizScore}%`} detail={quizAverageNeedsAttention ? 'One or more quizzes need review' : quizCount ? `From ${quizCount} completed ${quizCount === 1 ? 'quiz' : 'quizzes'}` : 'No completed quizzes yet'} icon={quizAverageNeedsAttention ? <WarningAmberOutlinedIcon fontSize="small" /> : <QuizOutlinedIcon fontSize="small" />} tone={quizAverageNeedsAttention ? 'amber' : 'violet'} />
       <OverviewMetric label="Learning streak" value={`${learningStreak} ${learningStreak === 1 ? 'day' : 'days'}`} detail="Your learning habit is growing" icon={<LocalFireDepartmentOutlinedIcon fontSize="small" />} tone="amber" />
     </Box>
+
+    {readiness}
 
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.55fr) minmax(280px, .9fr)' }, gap: 2.25, alignItems: 'start' }}>
       <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, border: 1, borderColor: 'divider', borderRadius: 3.5 }}>
