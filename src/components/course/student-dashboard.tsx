@@ -57,6 +57,8 @@ import TranslateOutlinedIcon from '@mui/icons-material/TranslateOutlined'
 import VideoCallOutlinedIcon from '@mui/icons-material/VideoCallOutlined'
 import CloseIcon from '@mui/icons-material/Close'
 import SearchIcon from '@mui/icons-material/Search'
+import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined'
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import GpsFixedOutlinedIcon from '@mui/icons-material/GpsFixedOutlined'
 import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined'
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
@@ -805,20 +807,140 @@ const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; 
   </>
 }
 
-const OtherClassesView: FC<{ classes: PublicClass[]; enrolledClassIds: Set<number>; isLoading: boolean; error: string | null; onEnroll: (classRecord: PublicClass) => void }> = ({ classes, enrolledClassIds, isLoading, error, onEnroll }) => {
+const OtherClassCard: FC<{ classRecord: PublicClass; cover?: string; category?: string; isExpanded: boolean; onToggleDetails: () => void; onEnroll: () => void }> = ({ classRecord, cover, category, isExpanded, onToggleDetails, onEnroll }) => {
+  const schedule = { ...classRecord.schedule, date: '', startsAt: '' }
+  const statusLabel = classRecord.enrollmentClosed ? 'Enrollment closed' : classRecord.status === 'pending_schedule' ? 'Pending schedule' : classRecord.status === 'open' ? 'Available' : classRecord.status === 'full' ? 'Full' : 'Closed'
+  const statusColor = classRecord.enrollmentClosed || classRecord.status === 'closed' ? 'error' : classRecord.status === 'open' ? 'success' : 'warning'
+  const canEnroll = !classRecord.enrollmentClosed && (classRecord.status === 'open' || classRecord.status === 'full')
+  const detailsId = `class-details-${classRecord.id}`
+  const contentPadding = { xs: 2, md: 2.5, lg: 3 }
+
+  return <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3.5, backgroundColor: 'background.paper', boxShadow: (theme) => `0 6px 20px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.25 : 0.05)}` }}>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '220px minmax(0, 1fr) 210px', lg: '300px minmax(0, 1fr) 240px' }, gap: { xs: 2, md: 2.5, lg: 3 }, p: contentPadding }}>
+      <Box sx={{ position: 'relative', aspectRatio: { xs: '16 / 10', md: '300 / 216' }, overflow: 'hidden', borderRadius: 2.5, backgroundColor: 'action.hover' }}>
+        {cover ? <Box component="img" src={cover} alt={`${classRecord.title} thumbnail`} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /> : <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'primary.main' }}><ClassOutlinedIcon sx={{ fontSize: 48 }} /></Box>}
+        <Chip icon={<VideoCallOutlinedIcon />} label="Live Class" size="small" sx={{ position: 'absolute', top: 12, left: 12, fontWeight: 700, color: 'common.white', backgroundColor: 'primary.main', '& .MuiChip-icon': { color: 'inherit' } }} />
+        <Box sx={{ position: 'absolute', left: 12, bottom: 12, display: 'grid', placeItems: 'center', width: 36, height: 36, borderRadius: 2, color: 'primary.main', backgroundColor: 'background.paper', boxShadow: 1 }}><MenuBookOutlinedIcon fontSize="small" /></Box>
+      </Box>
+
+      <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <Chip label={category ?? 'Live class'} size="small" color="primary" variant="outlined" sx={{ alignSelf: 'flex-start', mb: 1.25 }} />
+        <Typography variant="h6" component="h2" sx={{ mb: 1.5, fontWeight: 800, lineHeight: 1.3, letterSpacing: '-0.01em' }}>{classRecord.title}</Typography>
+        <Stack spacing={1}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}><PersonOutlineIcon sx={{ color: 'text.disabled', fontSize: 18 }} /><Typography variant="body2" color="text.secondary" noWrap>Tutor: {classRecord.tutorName}</Typography></Stack>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}><CalendarTodayOutlinedIcon sx={{ color: 'text.disabled', fontSize: 18 }} /><Typography variant="body2" color="text.secondary" noWrap>{classScheduleLabel(schedule)}</Typography></Stack>
+        </Stack>
+      </Box>
+
+      <Stack spacing={2} sx={{ minWidth: 0, justifyContent: 'space-between', borderColor: 'divider', borderTop: { xs: 1, md: 0 }, borderLeft: { md: 1 }, pt: { xs: 2, md: 0 }, pl: { md: 2.5 } }}>
+        <Box>
+          <Chip label={statusLabel} size="small" color={statusColor} sx={{ fontWeight: 600, mb: 1.5 }} />
+          <Typography sx={{ fontSize: 28, fontWeight: 800, lineHeight: 1.2, color: 'primary.main' }}>${classRecord.price}</Typography>
+        </Box>
+        <Stack spacing={1}>
+          <Button fullWidth variant="contained" disabled={!canEnroll} onClick={onEnroll} sx={{ minHeight: 40, borderRadius: 2, fontWeight: 700, boxShadow: 'none', '&:hover': { boxShadow: 'none' } }}>{classRecord.status === 'full' ? 'Join waitlist' : 'Enroll'}</Button>
+          <Button fullWidth variant="outlined" onClick={onToggleDetails} aria-expanded={isExpanded} aria-controls={detailsId} startIcon={<VisibilityOutlinedIcon fontSize="small" />} endIcon={<ArrowForwardRoundedIcon fontSize="small" sx={{ transform: isExpanded ? 'rotate(90deg)' : undefined, transition: 'transform 180ms ease' }} />} sx={{ minHeight: 40, borderRadius: 2, fontWeight: 700 }}>View details</Button>
+        </Stack>
+      </Stack>
+    </Box>
+
+    <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+      <Box id={detailsId} sx={{ px: contentPadding, pb: contentPadding }}>
+        <Stack spacing={0.75} sx={{ pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
+          <Typography variant="body2">Enrollment: {classRecord.enrolledCount}/{classRecord.capacity} seats filled</Typography>
+          <Typography variant="body2">Curriculum: {classRecord.moduleCount ?? 0} modules · {classRecord.lessonCount ?? 0} lessons</Typography>
+          <Typography variant="body2">Starts: {classRecord.schedule.startDate ? formatClassStartDate(schedule) : 'Date to be confirmed'}</Typography>
+          {classRecord.courseTitle && <Typography variant="body2">Course: {classRecord.courseTitle}</Typography>}
+        </Stack>
+      </Box>
+    </Collapse>
+  </Card>
+}
+
+const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolledClassIds: Set<number>; isLoading: boolean; error: string | null; onEnroll: (classRecord: PublicClass) => void }> = ({ classes, courses, enrolledClassIds, isLoading, error, onEnroll }) => {
   const [page, setPage] = useState(1)
   const [expandedClassId, setExpandedClassId] = useState<number | null>(null)
-  const availableClasses = classes.filter((classRecord) => !enrolledClassIds.has(classRecord.id))
-  const pageCount = Math.ceil(availableClasses.length / catalogPageSize)
-  const visibleClasses = availableClasses.slice((page - 1) * catalogPageSize, page * catalogPageSize)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [scheduleFilter, setScheduleFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState('all')
 
-  useEffect(() => setPage(1), [classes.length, enrolledClassIds.size])
+  const courseById = new Map(courses.map((course) => [String(course.id), course]))
+  const getClassCourse = (classRecord: PublicClass) => classRecord.courseId === null ? undefined : courseById.get(String(classRecord.courseId))
+  const availableClasses = classes.filter((classRecord) => !enrolledClassIds.has(classRecord.id))
+  const dayOptions = Array.from(new Set(availableClasses.flatMap((classRecord) => classRecord.schedule.days)))
+  const hasFlexibleClasses = availableClasses.some((classRecord) => classRecord.schedule.flexible)
+  const categoryOptions = Array.from(new Set(availableClasses.map((classRecord) => getClassCourse(classRecord)?.category).filter((category): category is string => Boolean(category))))
+
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+  const filteredClasses = availableClasses.filter((classRecord) => {
+    const matchesSearch = !normalizedQuery || [classRecord.title, classRecord.tutorName, classRecord.courseTitle ?? ''].some((value) => value.toLowerCase().includes(normalizedQuery))
+    const matchesSchedule = scheduleFilter === 'all' || (scheduleFilter === 'flexible' ? classRecord.schedule.flexible : classRecord.schedule.days.includes(scheduleFilter))
+    const matchesCategory = categoryFilter === 'all' || getClassCourse(classRecord)?.category === categoryFilter
+    return matchesSearch && matchesSchedule && matchesCategory
+  })
+  const pageCount = Math.ceil(filteredClasses.length / catalogPageSize)
+  const visibleClasses = filteredClasses.slice((page - 1) * catalogPageSize, page * catalogPageSize)
+
+  useEffect(() => setPage(1), [classes.length, enrolledClassIds.size, normalizedQuery, scheduleFilter, categoryFilter])
 
   return <>
     <ViewHeading title="Other Classes" description="Find live classes available outside your current schedule." />
     {isLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading other classes" /></Box> : error ? <EmptyState title="Classes unavailable" description={error} /> : availableClasses.length === 0 ? <EmptyState title="No other classes yet" description="There are no additional published classes available right now." /> : <>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2 }}>{visibleClasses.map((classRecord) => { const schedule = { ...classRecord.schedule, date: '', startsAt: '' }; const statusLabel = classRecord.enrollmentClosed ? 'Enrollment closed' : classRecord.status === 'pending_schedule' ? 'Pending schedule' : classRecord.status === 'open' ? 'Available' : classRecord.status === 'full' ? 'Full' : 'Closed'; const statusColor = classRecord.enrollmentClosed || classRecord.status === 'closed' ? 'error' : classRecord.status === 'open' ? 'success' : 'warning'; return <Card key={classRecord.id} elevation={0} sx={{ border: 1, borderColor: 'divider' }}><CardContent><Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1} sx={{ mb: 2 }}><Box sx={{ display: 'flex', p: 1.25, borderRadius: 2, color: 'primary.main', backgroundColor: 'action.hover' }}><ClassOutlinedIcon /></Box><Chip label={statusLabel} size="small" color={statusColor} /></Stack><Typography variant="h6" sx={{ mb: 1 }}>{classRecord.title}</Typography><Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Tutor: {classRecord.tutorName}</Typography><Typography color="text.secondary" variant="body2" sx={{ mb: 2 }}>{classScheduleLabel(schedule)}</Typography><Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}><Typography color="primary.main" sx={{ fontWeight: 700 }}>${classRecord.price}</Typography><Button variant="contained" size="small" onClick={() => !classRecord.enrollmentClosed && onEnroll(classRecord)} disabled={classRecord.status !== 'open' && classRecord.status !== 'full'}>{classRecord.status === 'full' ? 'Join waitlist' : 'Enroll'}</Button></Stack><Button fullWidth variant="text" size="small" onClick={() => setExpandedClassId((current) => current === classRecord.id ? null : classRecord.id)} aria-expanded={expandedClassId === classRecord.id} aria-controls={`class-details-${classRecord.id}`} endIcon={<ExpandMoreIcon sx={{ transform: expandedClassId === classRecord.id ? 'rotate(180deg)' : undefined, transition: 'transform 180ms ease' }} />}>View details</Button><Collapse in={expandedClassId === classRecord.id} timeout="auto" unmountOnExit><Box id={`class-details-${classRecord.id}`} sx={{ pt: 1.5, mt: 1, borderTop: 1, borderColor: 'divider' }}><Stack spacing={0.75}><Typography variant="body2">Enrollment: {classRecord.enrolledCount}/{classRecord.capacity} seats filled</Typography><Typography variant="body2">Curriculum: {classRecord.moduleCount ?? 0} modules · {classRecord.lessonCount ?? 0} lessons</Typography><Typography variant="body2">Starts: {classRecord.schedule.startDate ? formatClassStartDate(schedule) : 'Date to be confirmed'}</Typography>{classRecord.courseTitle && <Typography variant="body2">Course: {classRecord.courseTitle}</Typography>}</Stack></Box></Collapse></CardContent></Card> })}</Box>
-      {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="Other classes pages" /></Stack>}
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }} sx={{ mb: 2.5 }}>
+        <TextField
+          size="small"
+          placeholder="Search classes..."
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          inputProps={{ 'aria-label': 'Search classes' }}
+          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }}
+          sx={{ flex: 1, minWidth: 0, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
+        />
+        <TextField
+          select
+          size="small"
+          value={scheduleFilter}
+          onChange={(event) => setScheduleFilter(event.target.value)}
+          InputProps={{ startAdornment: <InputAdornment position="start"><CalendarTodayOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }}
+          sx={{ minWidth: { md: 180 }, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
+        >
+          <MenuItem value="all">All schedules</MenuItem>
+          {hasFlexibleClasses && <MenuItem value="flexible">Flexible schedule</MenuItem>}
+          {dayOptions.map((day) => <MenuItem key={day} value={day}>On {day}</MenuItem>)}
+        </TextField>
+        <TextField
+          select
+          size="small"
+          value={categoryFilter}
+          onChange={(event) => setCategoryFilter(event.target.value)}
+          InputProps={{ startAdornment: <InputAdornment position="start"><LayersOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }}
+          sx={{ minWidth: { md: 180 }, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
+        >
+          <MenuItem value="all">All categories</MenuItem>
+          {categoryOptions.map((category) => <MenuItem key={category} value={category}>{category}</MenuItem>)}
+        </TextField>
+        <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', ml: { md: 'auto' } }}>{filteredClasses.length} {filteredClasses.length === 1 ? 'class' : 'classes'} found</Typography>
+      </Stack>
+
+      {filteredClasses.length === 0 ? <EmptyState title="No matching classes" description="Try a different search term or filter." /> : <>
+        <Stack spacing={2}>
+          {visibleClasses.map((classRecord) => <OtherClassCard
+            key={classRecord.id}
+            classRecord={classRecord}
+            cover={getClassCourse(classRecord)?.cover}
+            category={getClassCourse(classRecord)?.category}
+            isExpanded={expandedClassId === classRecord.id}
+            onToggleDetails={() => setExpandedClassId((current) => current === classRecord.id ? null : classRecord.id)}
+            onEnroll={() => onEnroll(classRecord)}
+          />)}
+        </Stack>
+        {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="Other classes pages" /></Stack>}
+        {pageCount <= 1 && <Stack alignItems="center" textAlign="center" sx={{ mt: 4, px: 2, py: 3 }}>
+          <Box sx={{ display: 'grid', placeItems: 'center', width: 56, height: 56, borderRadius: '50%', color: 'primary.main', backgroundColor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.09) }}><SchoolOutlinedIcon /></Box>
+          <Typography variant="h6" sx={{ mt: 2, fontWeight: 700 }}>Explore more learning opportunities</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Check back later for new classes and live sessions.</Typography>
+        </Stack>}
+      </>}
     </>}
   </>
 }
@@ -1671,7 +1793,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
           {activeView === 'quizzes' && <QuizzesView enrollments={enrollments} completedLessons={completedLessons} quizResults={quizResults} now={now} onOpenCourse={openCourse} />}
           {activeView === 'purchases' && <PurchasesView />}
           {activeView === 'other-courses' && <OtherCoursesView courses={otherCourses} enrolledCourseIds={enrolledCourseIds} isLoading={isLoadingOtherCourses} error={otherCoursesError} />}
-          {activeView === 'other-classes' && <OtherClassesView classes={otherClasses} enrolledClassIds={enrolledClassIds} isLoading={isLoadingOtherClasses} error={otherClassesError} onEnroll={setClassToEnroll} />}
+          {activeView === 'other-classes' && <OtherClassesView classes={otherClasses} courses={otherCourses} enrolledClassIds={enrolledClassIds} isLoading={isLoadingOtherClasses} error={otherClassesError} onEnroll={setClassToEnroll} />}
           {activeView === 'profile' && <ProfileView onUpdateProfile={updateProfile} />}
           {activeView === 'payments' && <PaymentHistoryView payments={payments} isLoading={isLoadingPayments} error={paymentError} />}
           {activeView === 'course-view' && selectedCourse && selectedCourseEnrollment && <CourseViewer course={selectedCourse} progress={selectedCourseProgress} completedLessonIds={completedLessons[selectedCourse.id] ?? []} started={Boolean(startedCourses[selectedCourse.id] || completedLessons[selectedCourse.id]?.length)} timeSpentSeconds={timeSpent[selectedCourse.id] ?? 0} quizResults={quizResults[selectedCourse.id] ?? {}} now={now} initialLessonId={selectedLessonId} onBack={() => selectView(selectedCourseEnrollment.type === 'class' ? 'classes' : 'courses')} onStart={() => startCourse(selectedCourse.id)} onCompleteLesson={completeLesson} onQuizStart={startQuizAttempt} onQuizAnswer={saveQuizAnswerForAttempt} onQuizSubmit={submitQuiz} onQuizViolation={saveQuizViolationForAttempt} onQuizActiveChange={setQuizActive} onPracticeAnswer={recordPracticeAnswer} attendance={selectedCourseEnrollment.attendance} sessionJoinClicks={selectedCourseEnrollment.sessionJoinClicks} onJoinLiveSession={joinLiveSession} closedLiveSessionIds={closedLiveSessionIds} isClass={selectedCourseEnrollment.type === 'class'} weakAreas={selectedCourseEnrollment.weakAreas} readOnly={readOnlyQuizResult} />}
