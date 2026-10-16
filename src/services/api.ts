@@ -467,6 +467,16 @@ export interface AdminDashboardOverview {
   enrollmentsByCategory: Array<{ label: string; value: number }>
   revenueByCategory: Array<{ label: string; value: number }>
   topCourses: Array<{ label: string; value: number }>
+  paidRevenueByMonth: Array<{ monthKey: string; label: string; currency: string; value: number }>
+  paidRevenueComparison: Array<{ currency: string; currentTotal: number; previousTotal: number }>
+  lessonCompletionsByMonth: Array<{ label: string; value: number }>
+  quizPerformanceByMonth: Array<{ label: string; averageScore: number | null; attempts: number }>
+  courseEnrollments: Array<{ label: string; learners: number; enrollmentRecords: number }>
+  classEnrollments: Array<{ label: string; learners: number; enrollmentRecords: number }>
+  enrollmentSummary: {
+    courses: { learners: number; enrollmentRecords: number }
+    classes: { learners: number; enrollmentRecords: number }
+  }
   weakAreas: AdminWeakArea[]
 }
 
