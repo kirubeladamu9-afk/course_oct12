@@ -69,6 +69,7 @@ export interface AdminClass {
   status: ClassStatus
   published: boolean
   grade_level: number | null
+  exam_date: string | null
 }
 
 interface ClassEnrollment {
@@ -104,6 +105,7 @@ export interface ClassFormValue {
   price: number
   published: boolean
   grade_level: number | null
+  exam_date: string | null
 }
 
 interface PendingAssignmentValue {
@@ -264,6 +266,7 @@ const emptyClassForm = (): ClassFormValue => ({
   price: 0,
   published: true,
   grade_level: null,
+  exam_date: null,
 })
 
 const ClassCurriculumEditor: FC<{ modules: AdminModule[]; onChange: (modules: AdminModule[]) => void }> = ({ modules, onChange }) => {
@@ -287,7 +290,7 @@ export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boole
     }
     if (initializedRef.current) return
     initializedRef.current = true
-    setValues(classRecord ? { title: classRecord.title, program_id: classRecord.program_id, tutor_id: classRecord.tutor_id, capacity: classRecord.capacity, schedule: normalizeSchedule(classRecord.schedule), meeting_link: classRecord.meeting_link, modules: migrateLiveLessonSettings(normalizeModules(classRecord.modules), classRecord.meeting_link), price: classRecord.price, published: classRecord.published, grade_level: classRecord.grade_level } : emptyClassForm())
+    setValues(classRecord ? { title: classRecord.title, program_id: classRecord.program_id, tutor_id: classRecord.tutor_id, capacity: classRecord.capacity, schedule: normalizeSchedule(classRecord.schedule), meeting_link: classRecord.meeting_link, modules: migrateLiveLessonSettings(normalizeModules(classRecord.modules), classRecord.meeting_link), price: classRecord.price, published: classRecord.published, grade_level: classRecord.grade_level, exam_date: classRecord.exam_date } : emptyClassForm())
   }, [classRecord, open])
 
   useEffect(() => {
@@ -296,7 +299,7 @@ export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boole
 
   const fixedStartDate = classRecord ? normalizeSchedule(classRecord.schedule).startDate : undefined
   const classDateValidation = getDateValidation(values.schedule, fixedStartDate)
-  const canSave = Boolean((classRecord || values.grade_level !== null) && values.title.trim() && values.tutor_id >= 1 && values.capacity >= 1 && values.schedule.startDate && values.schedule.endDate && values.schedule.days.length && !classDateValidation.startInPast && !classDateValidation.endInPast && !classDateValidation.endBeforeStart)
+  const canSave = Boolean((classRecord || values.grade_level !== null) && (classRecord || values.program_id !== 'ministry-exam-prep' || values.exam_date !== null) && values.title.trim() && values.tutor_id >= 1 && values.capacity >= 1 && values.schedule.startDate && values.schedule.endDate && values.schedule.days.length && !classDateValidation.startInPast && !classDateValidation.endInPast && !classDateValidation.endBeforeStart)
   const selectablePrograms = classRecord ? Object.keys(programLabels) as ProgramId[] : manageablePrograms
   const gradeOptions = getGradeLevelOptions(values.program_id)
   const isOffStandardGrade = values.grade_level !== null && !gradeOptions.includes(values.grade_level)
@@ -308,13 +311,14 @@ export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boole
         <Stack spacing={2.5}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField required fullWidth label="Title" value={values.title} onChange={(event) => setValues({ ...values, title: event.target.value })} />
-            <FormControl fullWidth required><InputLabel>Program</InputLabel><Select label="Program" value={values.program_id} onChange={(event) => setValues({ ...values, program_id: event.target.value as ProgramId, grade_level: null })}>{selectablePrograms.map((program) => <MenuItem key={program} value={program}>{programLabels[program]}</MenuItem>)}</Select></FormControl><FormControl fullWidth required error={isOffStandardGrade || (!classRecord && values.grade_level === null)}><InputLabel>Grade Level</InputLabel><Select label="Grade Level" value={values.grade_level ?? ''} onChange={(event) => setValues({ ...values, grade_level: Number(event.target.value) })}>{gradeOptions.map((grade) => <MenuItem key={grade} value={grade}>Grade {grade}</MenuItem>)}{isOffStandardGrade && <MenuItem value={values.grade_level ?? ''}>Grade {values.grade_level} (outside exam grades)</MenuItem>}</Select>{!classRecord && values.grade_level === null && <FormHelperText>Select a grade level for this program</FormHelperText>}{isOffStandardGrade && <FormHelperText>This class has a grade outside the standard exam grades — please update it</FormHelperText>}</FormControl>
+            <FormControl fullWidth required><InputLabel>Program</InputLabel><Select label="Program" value={values.program_id} onChange={(event) => setValues({ ...values, program_id: event.target.value as ProgramId, grade_level: null, exam_date: null })}>{selectablePrograms.map((program) => <MenuItem key={program} value={program}>{programLabels[program]}</MenuItem>)}</Select></FormControl><FormControl fullWidth required error={isOffStandardGrade || (!classRecord && values.grade_level === null)}><InputLabel>Grade Level</InputLabel><Select label="Grade Level" value={values.grade_level ?? ''} onChange={(event) => setValues({ ...values, grade_level: Number(event.target.value) })}>{gradeOptions.map((grade) => <MenuItem key={grade} value={grade}>Grade {grade}</MenuItem>)}{isOffStandardGrade && <MenuItem value={values.grade_level ?? ''}>Grade {values.grade_level} (outside exam grades)</MenuItem>}</Select>{!classRecord && values.grade_level === null && <FormHelperText>Select a grade level for this program</FormHelperText>}{isOffStandardGrade && <FormHelperText>This class has a grade outside the standard exam grades — please update it</FormHelperText>}</FormControl>
           </Stack>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField required fullWidth label="Capacity" type="number" value={values.capacity} onChange={(event) => setValues({ ...values, capacity: Math.max(1, Number(event.target.value)) })} inputProps={{ min: 1 }} />
             <FormControl fullWidth required><InputLabel>Tutor</InputLabel><Select label="Tutor" value={tutorOptions.some((tutor) => tutor.id === values.tutor_id) ? values.tutor_id : ''} onChange={(event) => setValues({ ...values, tutor_id: Number(event.target.value) })}>{tutorOptions.map((tutor) => <MenuItem key={tutor.id} value={tutor.id}>{tutor.name}</MenuItem>)}</Select></FormControl>
             <TextField required fullWidth label="Price" type="number" value={values.price} onChange={(event) => setValues({ ...values, price: Math.max(0, Number(event.target.value)) })} inputProps={{ min: 0, step: 0.01 }} />
           </Stack>
+          {values.program_id === 'ministry-exam-prep' && <TextField required={!classRecord} fullWidth label="Exam Date" type="date" InputLabelProps={{ shrink: true }} value={values.exam_date ?? ''} onChange={(event) => setValues({ ...values, exam_date: event.target.value || null })} error={!classRecord && values.exam_date === null} helperText={!classRecord && values.exam_date === null ? 'Enter the official exam date for this class' : undefined} sx={{ maxWidth: { sm: '50%' } }} />}
           <Box><Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Class availability</Typography><ScheduleFields schedule={values.schedule} fixedStartDate={fixedStartDate} onChange={(schedule) => setValues({ ...values, schedule })} /></Box>
           <Box><Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Class curriculum</Typography><CourseEditor curriculumOnly classSchedule={values.schedule} course={{ id: classRecord?.id ?? 0, title: values.title, category: 'Class', level: '', tutor: '', status: 'Draft', students: 0, price: values.price, cover: '', description: '', longDescription: '', learningOutcomes: [], requirements: [], certificate: false, updatedAt: '', modules: normalizeModules(values.modules) }} onChange={(course) => setValues({ ...values, modules: course.modules })} /></Box>
           <Box sx={{ display: 'flex\',, alignItems: \'center\', justifyContent: \'space-between\', gap: 2, p: 2, border: 1, borderColor: \'divider\', borderRadius: 1, backgroundColor: \'background.default' }}><Box><Typography variant="body2" sx={{ fontWeight: 600 }}>{values.published ? 'Published class' : 'Unpublished class'}</Typography><Typography color="text.secondary" variant="caption">Only published classes appear in Active Classes.</Typography></Box><Switch checked={values.published} onChange={(event) => setValues({ ...values, published: event.target.checked })} inputProps={{ 'aria-label': 'Publish class' }} /></Box>

@@ -63,6 +63,8 @@ import GpsFixedOutlinedIcon from '@mui/icons-material/GpsFixedOutlined'
 import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined'
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
+import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
+import { buildStudyPlan, getDaysBetween, toDateKey, type PlannerTopic } from '@/components/course/study-planner'
 import { type FC, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type Course } from '@/interfaces/course'
 import ScheduleCalendar, { type ScheduleSession } from '@/components/schedule-calendar'
@@ -193,6 +195,8 @@ const formatQuizCountdown = (seconds: number) => `${Math.floor(seconds / 60)}:${
   meeting_link: string
   status: ClassStatus
   course_id: number | null
+  programId: string | null
+  examDate: string | null
   course?: DashboardCourse
  }
 
@@ -327,6 +331,8 @@ const mapEnrollmentClass = (enrollment: MyEnrollment, course: DashboardCourse): 
   meeting_link: enrollment.meetingLink || '',
   status: enrollment.classStatus || 'pending_schedule',
   course_id: enrollment.courseId,
+  programId: enrollment.classProgramId,
+  examDate: enrollment.classExamDate,
   course,
 }
 const getLatestQuizResults = (attempts: MyEnrollment['quizAttempts']): Record<number, DashboardQuizResult> => attempts
@@ -599,7 +605,95 @@ const WeakAreasPanel: FC<{ enrollments: Array<Pick<DashboardEnrollment, 'id' | '
   </Paper>
 }
 
-const OverviewView: FC<{ enrollments: DashboardEnrollment[]; now: Date; onSelectView: (view: DashboardView) => void; onOpenCourse: (courseId: number, lessonId?: number) => void; gamificationData: GamificationData }> = ({ enrollments, now, onSelectView, onOpenCourse, gamificationData }) => {
+const studyPlanStorageKey = (classId: number) => `study-plan:${classId}`
+
+const readSavedStudyPlanOrder = (classId: number): number[] | null => {
+  try {
+    const saved: unknown = JSON.parse(window.localStorage.getItem(studyPlanStorageKey(classId)) ?? 'null')
+    return Array.isArray(saved) && saved.every((value) => Number.isInteger(value)) ? saved : null
+  } catch {
+    return null
+  }
+}
+
+const getPlannerTopics = (course: DashboardCourse, weakAreas: WeakArea[], quizResults: Record<number, DashboardQuizResult>, completedLessonIds: number[]): PlannerTopic[] => {
+  const completed = new Set(completedLessonIds)
+  const normalize = (value: string) => value.trim().toLowerCase()
+  return course.modules
+    .flatMap((module) => module.lessons
+      .filter((lesson) => lesson.type !== 'practice' && !completed.has(lesson.id))
+      .map((lesson) => {
+        const names = [lesson.topicTitle, lesson.title].filter((name): name is string => Boolean(name)).map(normalize)
+        const topicScores = weakAreas.filter((area) => names.includes(normalize(area.topic))).map((area) => area.accuracy)
+        const quizResult = quizResults[lesson.id]
+        const scores = quizResult && !quizResult.passed ? [...topicScores, quizResult.score] : topicScores
+        return { lessonId: lesson.id, title: lesson.title, moduleTitle: module.title, weakScore: scores.length > 0 ? Math.min(...scores) : null }
+      }))
+    .sort((first, second) => (first.weakScore ?? 101) - (second.weakScore ?? 101))
+}
+
+const applySavedStudyPlanOrder = (topics: PlannerTopic[], order: number[]) => {
+  const topicById = new Map(topics.map((topic) => [topic.lessonId, topic]))
+  const orderedIds = new Set(order)
+  return [...order.flatMap((lessonId) => topicById.get(lessonId) ?? []), ...topics.filter((topic) => !orderedIds.has(topic.lessonId))]
+}
+
+const formatPlanDate = (dateKey: string, today?: string) => dateKey === today ? 'Today' : new Date(`${dateKey}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+const PlannerMessage: FC<{ title: string; description: string }> = ({ title, description }) => <Stack alignItems="center" textAlign="center" spacing={0.5} sx={{ py: 3, px: 2 }}><Typography sx={{ fontWeight: 700 }}>{title}</Typography><Typography variant="body2" color="text.secondary">{description}</Typography></Stack>
+
+const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: DashboardEnrollment; completedLessonIds: number[]; now: Date; onOpenCourse: (courseId: number, lessonId?: number) => void }> = ({ classRecord, enrollment, completedLessonIds, now, onOpenCourse }) => {
+  const [savedOrder, setSavedOrder] = useState<number[] | null>(() => readSavedStudyPlanOrder(classRecord.id))
+  const today = toDateKey(now)
+  const examDate = classRecord.examDate
+  const daysUntilExam = examDate ? getDaysBetween(today, examDate) : 0
+  const remainingTopics = classRecord.course ? getPlannerTopics(classRecord.course, enrollment.weakAreas, enrollment.quizResults, completedLessonIds) : []
+  const canPlan = Boolean(examDate) && daysUntilExam >= 0 && remainingTopics.length > 0
+
+  const createPlan = () => {
+    const order = remainingTopics.map((topic) => topic.lessonId)
+    try {
+      window.localStorage.setItem(studyPlanStorageKey(classRecord.id), JSON.stringify(order))
+    } catch {
+      // Storage can be unavailable; the plan still works for this visit.
+    }
+    setSavedOrder(order)
+  }
+
+  let content: ReactNode
+  if (!examDate) content = <PlannerMessage title="Your tutor hasn't set an exam date yet" description="Your study plan will appear here once an exam date is added to this class." />
+  else if (daysUntilExam < 0) content = <PlannerMessage title="Your exam date has passed" description="Check with your tutor if you need a revised schedule." />
+  else if (remainingTopics.length === 0) content = <PlannerMessage title="You're all caught up — nothing left to schedule!" description="Every lesson in this class is complete." />
+  else if (savedOrder === null) content = <PlannerMessage title="Ready when you are" description={`Generate a plan to schedule your ${remainingTopics.length} remaining ${remainingTopics.length === 1 ? 'lesson' : 'lessons'} before your exam.`} />
+  else {
+    const plan = buildStudyPlan(applySavedStudyPlanOrder(remainingTopics, savedOrder), today, examDate)
+    content = <Stack spacing={1.25}>
+      {plan.periods.map((period) => <Box key={period.index} sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 2.5 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{plan.granularity === 'day' ? formatPlanDate(period.startDate, today) : `Week ${period.index + 1} · ${formatPlanDate(period.startDate)} – ${formatPlanDate(period.endDate)}`}</Typography>
+        <Stack spacing={0.75} sx={{ mt: 1 }}>{period.topics.map((topic) => <Button key={topic.lessonId} onClick={() => onOpenCourse(classRecord.id, topic.lessonId)} sx={{ justifyContent: 'space-between', gap: 1, px: 1.25, py: 1, borderRadius: 2, textAlign: 'left', border: 1, borderColor: 'divider', color: 'text.primary' }}>
+          <Box sx={{ minWidth: 0, flex: 1 }}><Typography noWrap sx={{ fontWeight: 600 }}>{topic.title}</Typography><Typography noWrap variant="caption" color="text.secondary">{topic.moduleTitle}</Typography></Box>
+          {topic.weakScore !== null && <Chip size="small" label="Weak" color="warning" />}
+        </Button>)}</Stack>
+      </Box>)}
+    </Stack>
+  }
+
+  return <Paper elevation={0} sx={{ p: { xs: 2, md: 2.5 }, mb: 2.5, border: 1, borderColor: 'divider', borderRadius: 3 }}>
+    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1.5} sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={1.5} alignItems="center">
+        <Box sx={{ display: 'grid', placeItems: 'center', width: 44, height: 44, flexShrink: 0, borderRadius: 2.5, color: 'primary.main', backgroundColor: 'action.hover' }}><CalendarTodayOutlinedIcon /></Box>
+        <Box><Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>Study Planner</Typography><Typography variant="body2" color="text.secondary">{classRecord.title}</Typography></Box>
+      </Stack>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
+        {examDate && daysUntilExam >= 0 && <Chip label={daysUntilExam === 0 ? 'Your exam is today' : `${daysUntilExam} ${daysUntilExam === 1 ? 'day' : 'days'} until your exam`} color="primary" variant="outlined" sx={{ fontWeight: 700 }} />}
+        {canPlan && <Button variant={savedOrder === null ? 'contained' : 'outlined'} size="small" startIcon={savedOrder === null ? undefined : <RefreshRoundedIcon />} onClick={createPlan} sx={{ borderRadius: 2, fontWeight: 700 }}>{savedOrder === null ? 'Generate Plan' : 'Regenerate Plan'}</Button>}
+      </Stack>
+    </Stack>
+    {content}
+  </Paper>
+}
+
+const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; now: Date; onSelectView: (view: DashboardView) => void; onOpenCourse: (courseId: number, lessonId?: number) => void; gamificationData: GamificationData }> = ({ enrollments, completedLessons, now, onSelectView, onOpenCourse, gamificationData }) => {
   const courseEnrollments = enrollments.filter((enrollment) => enrollment.type === 'course' && enrollment.status !== 'completed')
   const courses = courseEnrollments.flatMap((enrollment) => enrollment.course ? [{
     id: enrollment.course.id,
@@ -632,6 +726,10 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; now: Date; onSelect
         .map((lesson) => ({ lesson, classRecord }))
     })
     .sort((first, second) => new Date(first.lesson.scheduledAt!).getTime() - new Date(second.lesson.scheduledAt!).getTime())[0]
+  const studyPlanners = enrollments.flatMap((enrollment) => {
+    const classRecord = enrollment.classRecord
+    return enrollment.type === 'class' && classRecord?.programId === 'ministry-exam-prep' ? [{ enrollment, classRecord }] : []
+  })
   const displayName = getAuthenticatedUser()?.name?.split(' ')[0] || 'Learner'
   return <StudentDashboardOverview
     displayName={displayName}
@@ -645,6 +743,7 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; now: Date; onSelect
     onOpenCourse={(courseId) => onOpenCourse(courseId)}
     onSelectView={onSelectView}
   >
+    {studyPlanners.map(({ enrollment, classRecord }) => <StudyPlannerPanel key={classRecord.id} classRecord={classRecord} enrollment={enrollment} completedLessonIds={completedLessons[enrollment.item_id] ?? []} now={now} onOpenCourse={onOpenCourse} />)}
     <WeakAreasPanel enrollments={enrollments} onOpenCourse={onOpenCourse} />
     <GamificationWidgets data={gamificationData} />
     {pendingCount > 0 && <Alert severity="info" icon={<CalendarTodayOutlinedIcon />} action={<Button color="inherit" size="small" onClick={() => onSelectView('classes')}>View classes</Button>} sx={{ mt: 2.25, borderRadius: 3 }}>You have {pendingCount} class {pendingCount === 1 ? 'enrollment' : 'enrollments'} awaiting scheduling.</Alert>}
@@ -1823,7 +1922,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
         {profileMessage && <Alert severity="success" onClose={() => setProfileMessage('')} sx={{ mb: 3 }}>{profileMessage}</Alert>}
         {progressError && <Alert severity="error" onClose={() => setProgressError(null)} sx={{ mb: 3 }}>{progressError}</Alert>}
         {isLoadingEnrollments ? <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 8 }} aria-live="polite"><CircularProgress aria-label="Loading enrollments" /><Typography color="text.secondary">Loading your enrollments...</Typography></Box> : enrollmentError ? <Alert severity="error">{enrollmentError}</Alert> : <>
-          {activeView === 'overview' && (gamificationData ? <OverviewView enrollments={enrollments} now={now} onSelectView={selectView} onOpenCourse={openCourse} gamificationData={gamificationData} /> : gamificationError ? <Alert severity="error">{gamificationError}</Alert> : <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }} aria-live="polite"><CircularProgress aria-label="Loading gamification" /></Box>)}
+          {activeView === 'overview' && (gamificationData ? <OverviewView enrollments={enrollments} completedLessons={completedLessons} now={now} onSelectView={selectView} onOpenCourse={openCourse} gamificationData={gamificationData} /> : gamificationError ? <Alert severity="error">{gamificationError}</Alert> : <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }} aria-live="polite"><CircularProgress aria-label="Loading gamification" /></Box>)}
           {activeView === 'calendar' && <StudentCalendarView enrollments={enrollments} now={now} onJoin={(session) => { if (session.lessonId && session.meetingUrl) void joinLiveSession(session.lessonId, session.meetingUrl, session.enrollmentId) }} />}
           {activeView === 'courses' && <CoursesView enrollments={enrollments} completedLessons={completedLessons} onOpenCourse={openCourse} />}
           {activeView === 'classes' && <ClassesView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} gamificationData={gamificationData} />}

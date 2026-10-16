@@ -145,6 +145,8 @@ export interface MyEnrollment {
   classSchedule: { days: string[]; time: string; duration: number; flexible: boolean; startDate: string; endDate?: string } | null
   meetingLink: string | null
   classStatus: 'pending_schedule' | 'open' | 'full' | 'closed' | null
+  classProgramId: string | null
+  classExamDate: string | null
   attendance: Record<number, 'Present' | 'Absent'>
   sessionJoinClicks: Record<number, string>
   lessonProgress: Record<number, LessonProgress>
@@ -256,6 +258,7 @@ export interface TutorClass {
   tutorId: number
   tutorName: string
   gradeLevel: number | null
+  examDate: string | null
   schedule: { days: string[]; time: string; duration: number; flexible: boolean; startDate: string; endDate: string }
   meetingLink: string
   price: number
@@ -575,6 +578,7 @@ export interface TutorClassUpdate {
   price: number
   published: boolean
   grade_level: number | null
+  exam_date: string | null
 }
 
 export const updateTutorClass = async (classRecord: TutorClassUpdate): Promise<void> => {
@@ -794,6 +798,7 @@ export interface AdminClass {
   status: AdminClassStatus
   published: boolean
   grade_level: number | null
+  exam_date: string | null
 }
 
 export interface ClassLeaderboardEntry {
@@ -899,7 +904,7 @@ export const deleteAdminClass = async (classRecord: AdminClass) => {
   if (!response.ok) throw new Error(await getErrorMessage(response))
 }
 
-export const assignAdminClass = (enrollmentId: number, values: Omit<AdminClass, 'id' | 'status' | 'program_id' | 'modules' | 'published' | 'grade_level'>) => requestClasses('/api/admin/classes/assign', {
+export const assignAdminClass = (enrollmentId: number, values: Omit<AdminClass, 'id' | 'status' | 'program_id' | 'modules' | 'published' | 'grade_level' | 'exam_date'>) => requestClasses('/api/admin/classes/assign', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ enrollmentId, ...values }),
